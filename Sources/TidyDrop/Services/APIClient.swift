@@ -63,11 +63,31 @@ struct APIClient {
                     visionModel: settings.visionModel,
                     confidenceThreshold: settings.confidenceThreshold,
                     suggestRenaming: settings.suggestRenaming,
+                    allowAICategories: settings.allowAICategories,
                     fallbackCategoryID: fallback
                 )
             )
         )
         return response.results
+    }
+
+    func discoverCategories(files: [FileItem], categories: [Category], settings: AppSettings) async throws -> DiscoverCategoriesResponse {
+        let fallback = categories.first { $0.name.localizedCaseInsensitiveContains("review") }?.id ?? categories.last?.id ?? "review"
+        return try await post(
+            "/api/categories/discover",
+            body: ClassifyRequest(
+                files: files,
+                categories: categories,
+                settings: ClassifySettings(
+                    textModel: settings.textModel,
+                    visionModel: settings.visionModel,
+                    confidenceThreshold: settings.confidenceThreshold,
+                    suggestRenaming: settings.suggestRenaming,
+                    allowAICategories: settings.allowAICategories,
+                    fallbackCategoryID: fallback
+                )
+            )
+        )
     }
 
     func plan(
@@ -176,19 +196,33 @@ private struct ClassifySettings: Codable {
     var visionModel: String
     var confidenceThreshold: Double
     var suggestRenaming: Bool
+    var allowAICategories: Bool
     var fallbackCategoryID: String
+    var maxAICategories = 8
 
     enum CodingKeys: String, CodingKey {
         case textModel = "text_model"
         case visionModel = "vision_model"
         case confidenceThreshold = "confidence_threshold"
         case suggestRenaming = "suggest_renaming"
+        case allowAICategories = "allow_ai_categories"
         case fallbackCategoryID = "fallback_category_id"
+        case maxAICategories = "max_ai_categories"
     }
 }
 
 private struct ClassifyResponse: Codable {
     var results: [ClassificationResult]
+}
+
+struct DiscoverCategoriesResponse: Codable {
+    var categories: [Category]
+    var addedCategories: [Category]
+
+    enum CodingKeys: String, CodingKey {
+        case categories
+        case addedCategories = "added_categories"
+    }
 }
 
 private struct PlanRequest: Codable {

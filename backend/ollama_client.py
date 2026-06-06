@@ -53,6 +53,14 @@ class OllamaClient:
             raise OllamaUnavailable("No vision model selected.")
         return await self._generate(model, build_image_prompt(file, categories, settings), [file.image_b64] if file.image_b64 else [])
 
+    async def discover_categories(
+        self, files: list[FileItem], categories: list[Category], settings: ClassificationSettings
+    ) -> dict[str, Any]:
+        model = settings.text_model or settings.model
+        if not model:
+            raise OllamaUnavailable("No text model selected.")
+        return await self._generate(model, build_category_discovery_prompt(files, categories, settings))
+
     async def _generate(self, model: str, prompt: str, images: list[str] | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": model,
@@ -163,4 +171,53 @@ Return valid JSON only:
   "reason": "short reason",
   "suggested_filename": "optional_new_filename.ext",
   "needs_review": true
+}}"""
+
+
+def build_category_discovery_prompt(
+    files: list[FileItem],
+    categories: list[Category],
+    settings: ClassificationSettings,
+) -> str:
+    sampled_files = [
+        {
+            "name": file.name,
+            "extension": file.extension,
+            "file_kind": file.file_kind,
+            "path": file.path,
+            "metadata_summary": file.metadata_summary[:500],
+            "content_preview": file.content_preview[:800],
+            "supported_level": file.supported_level,
+        }
+        for file in files[:200]
+    ]
+    return f"""You are TidyDrop, a local AI file organization assistant.
+
+Your task is to look at the whole scanned folder before classification and suggest useful additional sorting folders.
+
+Rules:
+- Return only valid JSON.
+- Do not remove existing user categories.
+- Do not duplicate an existing category by meaning or name.
+- Suggest only categories that would help classify multiple files or a clearly important group.
+- Keep category names short, human-readable folder names.
+- Always keep the fallback category for uncertain files.
+- Maximum new categories: {settings.max_ai_categories}
+
+Existing user categories:
+{_categories_json(categories)}
+
+Scanned files sample:
+{json.dumps(sampled_files, ensure_ascii=False, indent=2)}
+
+Return valid JSON only:
+{{
+  "categories": [
+    {{
+      "id": "short-stable-kebab-id",
+      "name": "Folder Name",
+      "description": "What belongs here",
+      "rules": "Short optional guidance"
+    }}
+  ]
 }}"""

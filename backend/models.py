@@ -81,6 +81,8 @@ class ClassificationSettings(BaseModel):
     vision_model: str = ""
     confidence_threshold: float = 0.75
     suggest_renaming: bool = True
+    allow_ai_categories: bool = False
+    max_ai_categories: int = 8
     fallback_category_id: str = "review"
     global_user_instructions: str = ""
 
@@ -104,6 +106,17 @@ class ClassificationResult(BaseModel):
 
 class ClassifyResponse(BaseModel):
     results: list[ClassificationResult]
+
+
+class DiscoverCategoriesRequest(BaseModel):
+    files: list[FileItem]
+    categories: list[Category]
+    settings: ClassificationSettings = Field(default_factory=ClassificationSettings)
+
+
+class DiscoverCategoriesResponse(BaseModel):
+    categories: list[Category]
+    added_categories: list[Category]
 
 
 class PlanSettings(BaseModel):

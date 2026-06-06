@@ -14,6 +14,11 @@ struct CategoryPanel: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if !store.lastAddedAICategories.isEmpty {
+                    Text("\(store.lastAddedAICategories.count) AI-added")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Button {
                     store.addCategory()
                 } label: {

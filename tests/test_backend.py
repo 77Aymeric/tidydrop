@@ -4,10 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.classifier import normalize_result
+from backend.classifier import discover_categories, normalize_result
 from backend.models import (
     Category,
     ClassificationResult,
+    ClassificationSettings,
     FileItem,
     PlanRequest,
     PlanSettings,
@@ -68,6 +69,43 @@ def test_invalid_or_low_confidence_classification_falls_back(tmp_path: Path) -> 
     assert result.suggested_category_id == "review"
     assert low.suggested_category_id == "review"
     assert low.needs_review is True
+
+
+@pytest.mark.asyncio
+async def test_ai_category_discovery_adds_categories_before_classification(tmp_path: Path) -> None:
+    class FakeClient:
+        async def discover_categories(self, files, categories, settings):
+            return {
+                "categories": [
+                    {
+                        "id": "tax-papers",
+                        "name": "Tax Papers",
+                        "description": "Tax returns and fiscal documents",
+                        "rules": "Use for tax-related PDFs and forms.",
+                    },
+                    {
+                        "id": "docs",
+                        "name": "Documents",
+                        "description": "Duplicate should be ignored",
+                        "rules": "",
+                    },
+                ]
+            }
+
+    file_path = tmp_path / "tax_return.pdf"
+    file_path.write_text("tax return 2026", encoding="utf-8")
+    categories = [Category(id="docs", name="Documents")]
+
+    final_categories, added = await discover_categories(
+        [item(file_path)],
+        categories,
+        ClassificationSettings(allow_ai_categories=True, text_model="test-model"),
+        client=FakeClient(),
+    )
+
+    assert [category.id for category in added] == ["tax-papers"]
+    assert any(category.id == "review" for category in final_categories)
+    assert [category.id for category in final_categories].count("docs") == 1
 
 
 def test_plan_apply_history_and_move_undo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

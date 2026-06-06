@@ -19,6 +19,7 @@ final class AppStore {
     var runs: [OperationPlan] = []
     var undoPreview: UndoPreview?
     var lastAppliedRun: OperationPlan?
+    var lastAddedAICategories: [Category] = []
     var models: [String] = []
     var selectedFileID: String?
     var selectedRunID: String?
@@ -209,17 +210,32 @@ final class AppStore {
             return
         }
         await run("Classifying locally") {
-            let nextResults = try await api.classify(files: files, categories: categories, settings: settings)
+            var classificationCategories = ensureReviewCategory(categories)
+            if settings.allowAICategories {
+                statusMessage = "Discovering useful folders"
+                let discovered = try await api.discoverCategories(files: files, categories: classificationCategories, settings: settings)
+                classificationCategories = ensureReviewCategory(discovered.categories)
+                categories = classificationCategories
+                lastAddedAICategories = discovered.addedCategories
+            } else {
+                lastAddedAICategories = []
+            }
+            statusMessage = "Classifying with final folder list"
+            let nextResults = try await api.classify(files: files, categories: classificationCategories, settings: settings)
             let nextPlan = try await api.plan(
                 sourceFolder: folderURL.path,
                 files: files,
-                categories: categories,
+                categories: classificationCategories,
                 results: nextResults,
                 settings: settings
             )
             results = nextResults
             plan = nextPlan
-            statusMessage = "Generated \(nextPlan.operations.count) proposed operations."
+            if lastAddedAICategories.isEmpty {
+                statusMessage = "Generated \(nextPlan.operations.count) proposed operations."
+            } else {
+                statusMessage = "Added \(lastAddedAICategories.count) folders, then generated \(nextPlan.operations.count) operations."
+            }
             if nextPlan.operations.isEmpty {
                 errorMessage = "Classification completed, but no operations were generated."
             }

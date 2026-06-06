@@ -9,6 +9,7 @@ struct AppSettings: Hashable {
     var confidenceThreshold = 0.75
     var suggestRenaming = true
     var applyRenaming = false
+    var allowAICategories = false
     var textModel = ""
     var visionModel = ""
 }

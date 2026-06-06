@@ -56,6 +56,15 @@ struct SettingsStrip: View {
 
             SettingsGroup(title: "AI") {
                 SettingRow(
+                    title: "Let AI create folders",
+                    help: "TidyDrop first scans everything, suggests useful folders, then classifies all files again."
+                ) {
+                    Toggle("Create missing sorting folders before classification.", isOn: $store.settings.allowAICategories)
+                        .toggleStyle(.switch)
+                        .help("Sequential mode: discover folders from the whole scan, add them, then classify every file with the final list.")
+                }
+
+                SettingRow(
                     title: "Ollama text model",
                     help: "Used for PDFs, documents, code and metadata."
                 ) {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from backend.models import Category, ClassificationResult, ClassificationSettings, FileItem
 from backend.ollama_client import OllamaClient
 
@@ -36,11 +38,83 @@ async def classify_files(
     return results
 
 
+async def discover_categories(
+    files: list[FileItem],
+    categories: list[Category],
+    settings: ClassificationSettings,
+    client: OllamaClient | None = None,
+) -> tuple[list[Category], list[Category]]:
+    if not settings.allow_ai_categories:
+        return ensure_review_category(categories), []
+    client = client or OllamaClient()
+    existing = ensure_review_category(categories)
+    try:
+        raw = await client.discover_categories(files, existing, settings)
+    except Exception:
+        return existing, []
+
+    valid_existing_ids = {category.id for category in existing}
+    valid_existing_names = {category.name.casefold() for category in existing}
+    added: list[Category] = []
+    for raw_category in raw.get("categories", []):
+        if not isinstance(raw_category, dict):
+            continue
+        name = str(raw_category.get("name") or "").strip()
+        if not name or name.casefold() in valid_existing_names:
+            continue
+        category_id = slugify(str(raw_category.get("id") or name))
+        if not category_id or category_id in valid_existing_ids or any(category.id == category_id for category in added):
+            category_id = unique_id(slugify(name), valid_existing_ids | {category.id for category in added})
+        if category_id == "review" or name.casefold() in {"to review", "à vérifier", "a verifier"}:
+            continue
+        added.append(
+            Category(
+                id=category_id,
+                name=name[:60],
+                description=str(raw_category.get("description") or "AI-suggested sorting folder.")[:180],
+                rules=str(raw_category.get("rules") or "")[:240],
+            )
+        )
+        if len(added) >= settings.max_ai_categories:
+            break
+    return existing + added, added
+
+
 def ensure_fallback(categories: list[Category], fallback_id: str) -> str:
     if any(category.id == fallback_id for category in categories):
         return fallback_id
     review = next((category.id for category in categories if category.name.lower() in {"to review", "à vérifier", "a verifier"}), None)
     return review or categories[-1].id
+
+
+def ensure_review_category(categories: list[Category]) -> list[Category]:
+    if any(category.id == "review" or category.name.casefold() == "to review" for category in categories):
+        return categories
+    return categories + [
+        Category(
+            id="review",
+            name="To Review",
+            description="Files TidyDrop is unsure about.",
+            rules="Use this when confidence is low.",
+        )
+    ]
+
+
+def slugify(value: str) -> str:
+    value = value.lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    return value.strip("-")[:48]
+
+
+def unique_id(base: str, existing_ids: set[str]) -> str:
+    base = base or "ai-folder"
+    if base not in existing_ids:
+        return base
+    for index in range(2, 100):
+        candidate = f"{base}-{index}"
+        if candidate not in existing_ids:
+            return candidate
+    return f"{base}-new"
 
 
 def normalize_result(

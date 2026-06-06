@@ -5,13 +5,15 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
-from backend.classifier import classify_files
+from backend.classifier import classify_files, discover_categories
 from backend.config import OLLAMA_BASE_URL, ensure_app_dirs
 from backend.history import list_runs, load_run
 from backend.models import (
     ApplyRequest,
     ClassifyRequest,
     ClassifyResponse,
+    DiscoverCategoriesRequest,
+    DiscoverCategoriesResponse,
     OpenFolderRequest,
     PlanRequest,
     ScanRequest,
@@ -65,6 +67,12 @@ async def scan(request: ScanRequest):
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify(request: ClassifyRequest):
     return ClassifyResponse(results=await classify_files(request.files, request.categories, request.settings))
+
+
+@app.post("/api/categories/discover", response_model=DiscoverCategoriesResponse)
+async def categories_discover(request: DiscoverCategoriesRequest):
+    categories, added = await discover_categories(request.files, request.categories, request.settings)
+    return DiscoverCategoriesResponse(categories=categories, added_categories=added)
 
 
 @app.post("/api/plan")
