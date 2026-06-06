@@ -1,0 +1,62 @@
+[project]
+name = "tidydrop"
+version = "0.1.0"
+description = "Drop a folder. Let local AI tidy it."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "TidyDrop contributors" },
+]
+keywords = ["macos", "ollama", "local-ai", "file-organization", "privacy"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: MacOS X",
+  "Framework :: FastAPI",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Desktop Environment :: File Managers",
+]
+dependencies = [
+  "fastapi>=0.111",
+  "uvicorn[standard]>=0.30",
+  "httpx>=0.27",
+  "pydantic>=2.7",
+  "python-docx>=1.1",
+  "openpyxl>=3.1",
+  "pymupdf>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.5",
+]
+
+[project.scripts]
+tidydrop = "backend.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/77Aymeric/tidydrop"
+Repository = "https://github.com/77Aymeric/tidydrop"
+Issues = "https://github.com/77Aymeric/tidydrop/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
