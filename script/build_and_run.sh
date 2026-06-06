@@ -27,7 +27,78 @@ stop_app() {
   fi
 }
 
+find_python() {
+  local candidates=()
+  if [[ -n "${PYTHON_BIN:-}" ]]; then
+    candidates+=("$PYTHON_BIN")
+  fi
+  candidates+=(
+    "python3.12"
+    "python3.11"
+    "/opt/homebrew/bin/python3.12"
+    "/opt/homebrew/bin/python3.11"
+    "/usr/local/bin/python3.12"
+    "/usr/local/bin/python3.11"
+    "/Users/aymeric/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+    "python3"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      local resolved
+      resolved="$(command -v "$candidate")"
+      if "$resolved" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+      then
+        echo "$resolved"
+        return 0
+      fi
+    elif [[ -x "$candidate" ]]; then
+      if "$candidate" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+      then
+        echo "$candidate"
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+ensure_backend_env() {
+  local python
+  if ! python="$(find_python)"; then
+    echo "Python 3.11+ is required to create the local backend environment." >&2
+    exit 1
+  fi
+
+  if [[ -x .venv/bin/python ]]; then
+    if ! .venv/bin/python - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+    then
+      rm -rf .venv
+    fi
+  fi
+
+  if [[ ! -x .venv/bin/python ]]; then
+    "$python" -m venv .venv
+  fi
+
+  if ! .venv/bin/python -c "import uvicorn, fastapi" >/dev/null 2>&1; then
+    .venv/bin/python -m pip install --upgrade pip
+    .venv/bin/python -m pip install -e ".[dev]"
+  fi
+}
+
 build_app() {
+  ensure_backend_env
   swift build
   local build_binary
   build_binary="$(swift build --show-bin-path)/$APP_NAME"

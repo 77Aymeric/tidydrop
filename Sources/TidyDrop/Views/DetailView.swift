@@ -61,6 +61,9 @@ private struct HeaderPanel: View {
                     .font(.largeTitle.weight(.semibold))
                 Text("Drop a folder. Let local AI tidy it.")
                     .foregroundStyle(.secondary)
+                Text("Choose a folder, pick categories, preview the plan, then apply safely.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                 if let summary = store.summary {
                     HStack(spacing: 14) {
                         StatLabel(title: "Files", value: "\(summary.totalFiles)")
@@ -73,13 +76,26 @@ private struct HeaderPanel: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 8) {
-                Text(store.folderURL?.lastPathComponent ?? "No Folder")
-                    .font(.headline)
-                Text(store.settings.outputFolder.isEmpty ? "Output folder not set" : store.settings.outputFolder)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(store.folderURL == nil ? "No folder selected" : "Selected folder")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(store.folderURL?.path ?? "Choose or drop a folder to start.")
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("Sorted folder")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(store.effectiveOutputFolderDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
         }
         .padding(22)
@@ -90,6 +106,7 @@ private struct HeaderPanel: View {
 private struct DropZonePanel: View {
     @Bindable var store: AppStore
     var isTargeted: Bool
+    @State private var isChoosingFolder = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -99,19 +116,21 @@ private struct DropZonePanel: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Drop a folder here")
                     .font(.headline)
-                Text(store.folderURL?.path ?? "Choose or drag a folder to prepare a safe local scan.")
+                Text(store.folderURL?.path ?? "TidyDrop will scan it locally. Nothing will be moved yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
             Spacer()
-            if store.folderURL != nil {
-                Button("Scan") {
+            Button(store.folderURL == nil ? "Choose folder" : "Scan") {
+                if store.folderURL == nil {
+                    isChoosingFolder = true
+                } else {
                     Task { await store.scan() }
                 }
-                .controlSize(.small)
-                .disabled(store.isBusy)
             }
+            .controlSize(.small)
+            .disabled(store.isBusy)
         }
         .padding(18)
         .overlay {
@@ -121,35 +140,42 @@ private struct DropZonePanel: View {
         .background(isTargeted ? Color.primary.opacity(0.045) : Color.clear, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .tidydropGlass(cornerRadius: 22)
         .animation(.smooth(duration: 0.18), value: isTargeted)
+        .fileImporter(isPresented: $isChoosingFolder, allowedContentTypes: [.folder]) { result in
+            if case .success(let url) = result {
+                store.chooseFolder(url)
+                Task { await store.scan() }
+            }
+        }
     }
 }
 
 private struct SafeModeBanner: View {
     private let items = [
-        ("lock", "Local only"),
-        ("doc.on.doc", "Copy by default"),
-        ("trash.slash", "Never deletes"),
-        ("square.on.square", "Never overwrites"),
-        ("eye", "Preview before apply"),
-        ("arrow.uturn.backward", "Undo enabled")
+        ("lock", "Local only", "Files stay on this Mac and Ollama runs locally."),
+        ("doc.on.doc", "Copy default", "Copy keeps originals untouched. Recommended."),
+        ("trash.slash", "No deletion", "TidyDrop never deletes files."),
+        ("square.on.square", "No overwrite", "Existing files are never overwritten."),
+        ("eye", "Review first", "You preview every operation before Apply."),
+        ("arrow.uturn.backward", "Undo ready", "Completed runs can be undone.")
     ]
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Text("Safe Mode")
                 .font(.headline)
             Divider()
                 .frame(height: 18)
             ForEach(items, id: \.1) { item in
                 Label(item.1, systemImage: item.0)
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .labelStyle(.titleAndIcon)
+                    .help(item.2)
             }
             Spacer()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .padding(.vertical, 12)
         .tidydropGlass(cornerRadius: 18)
     }
 }
@@ -173,9 +199,9 @@ private struct TemplatePanel: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Sorting Templates")
+                Text("Sorting templates")
                     .font(.headline)
-                Text("Start with practical categories, then edit them freely.")
+                Text("Start with ready-made categories, then edit them freely.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -187,7 +213,7 @@ private struct TemplatePanel: View {
                     }
                 }
             } label: {
-                Label("Choose Template", systemImage: "rectangle.3.group")
+                Label("Choose a template", systemImage: "rectangle.3.group")
             }
             .controlSize(.small)
         }

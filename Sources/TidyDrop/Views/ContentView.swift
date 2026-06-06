@@ -57,7 +57,7 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("TidyDrop will \(store.settings.mode.rawValue) enabled files without deleting or overwriting existing files.")
+            Text("TidyDrop will \(store.settings.mode == .copy ? "copy files" : "move files") without deleting or overwriting existing files.")
         }
     }
 }

@@ -25,8 +25,9 @@ final class AppStore {
     var isBusy = false
     var statusMessage = "Ready"
     var errorMessage: String?
+    var backendStatus = "Starting..."
     var ollamaRunning = false
-    var ollamaMessage = "Checking Ollama"
+    var ollamaMessage = "Not checked yet"
 
     private let backend = BackendProcess()
     private let api = APIClient()
@@ -49,18 +50,63 @@ final class AppStore {
         return (completed, skipped, conflicts)
     }
 
+    var defaultOutputFolder: String? {
+        folderURL?.appending(path: "TidyDrop Sorted").path
+    }
+
+    var effectiveOutputFolderDescription: String {
+        if !settings.outputFolder.isEmpty {
+            return settings.outputFolder
+        }
+        return defaultOutputFolder ?? "Will be created inside the selected folder."
+    }
+
     func start() async {
-        backend.startIfNeeded()
-        try? await Task.sleep(for: .milliseconds(700))
-        await refreshStatus()
+        if !backend.startIfNeeded() {
+            backendStatus = "Error"
+            errorMessage = backend.lastError ?? "Backend could not start."
+            return
+        }
+        await waitForBackend()
         await refreshHistory()
     }
 
+    private func waitForBackend() async {
+        backendStatus = "Starting..."
+        for _ in 0..<30 {
+            do {
+                let health = try await api.health()
+                backendStatus = health.status == "ok" ? "Ready" : "Error"
+                ollamaRunning = health.ollama.running
+                ollamaMessage = health.ollama.running ? "Connected" : "Ollama is not running.\nStart it with: ollama serve"
+                models = try await api.models()
+                if settings.textModel.isEmpty {
+                    settings.textModel = models.first ?? ""
+                }
+                if settings.visionModel.isEmpty {
+                    settings.visionModel = models.first ?? ""
+                }
+                errorMessage = nil
+                return
+            } catch {
+                try? await Task.sleep(for: .milliseconds(350))
+            }
+        }
+        backendStatus = "Error"
+        errorMessage = backend.lastError ?? "Backend did not become ready. Check ~/.tidydrop/logs/backend.log."
+    }
+
     func refreshStatus() async {
+        if !backend.startIfNeeded() {
+            backendStatus = "Error"
+            errorMessage = backend.lastError ?? "Backend could not start."
+            return
+        }
         do {
             let health = try await api.health()
+            backendStatus = health.status == "ok" ? "Ready" : "Error"
             ollamaRunning = health.ollama.running
-            ollamaMessage = health.ollama.message
+            ollamaMessage = health.ollama.running ? "Connected" : "Ollama is not running.\nStart it with: ollama serve"
             models = try await api.models()
             if settings.textModel.isEmpty {
                 settings.textModel = models.first ?? ""
@@ -69,9 +115,10 @@ final class AppStore {
                 settings.visionModel = models.first ?? ""
             }
         } catch {
+            backendStatus = "Starting..."
             ollamaRunning = false
-            ollamaMessage = "Backend is starting. Try again in a moment."
-            errorMessage = "TidyDrop backend is starting. Try again in a moment."
+            ollamaMessage = "Not checked yet"
+            errorMessage = "Backend is starting. Try again in a moment."
         }
     }
 
@@ -85,6 +132,18 @@ final class AppStore {
         if settings.outputFolder.isEmpty {
             settings.outputFolder = url.appending(path: "TidyDrop Sorted").path
         }
+    }
+
+    func chooseOutputFolder(_ url: URL) {
+        settings.outputFolder = url.path
+        statusMessage = "Sorted folder updated."
+        errorMessage = nil
+    }
+
+    func resetOutputFolderToDefault() {
+        settings.outputFolder = defaultOutputFolder ?? ""
+        statusMessage = "Sorted folder reset to default."
+        errorMessage = nil
     }
 
     func acceptDroppedURL(_ url: URL, autoScan: Bool = false) async {
@@ -201,7 +260,7 @@ final class AppStore {
     }
 
     func applyTemplate(_ template: SortingTemplate) {
-        categories = template.categories
+        categories = ensureReviewCategory(template.categories)
         statusMessage = "Applied template: \(template.name)"
         errorMessage = nil
     }
@@ -235,8 +294,17 @@ final class AppStore {
     }
 
     func removeCategory(_ category: Category) {
-        guard categories.count > 1 else { return }
+        guard categories.count > 1, category.id != "review" else { return }
         categories.removeAll { $0.id == category.id }
+    }
+
+    private func ensureReviewCategory(_ categories: [Category]) -> [Category] {
+        if categories.contains(where: { $0.id == "review" || $0.name == "To Review" }) {
+            return categories
+        }
+        return categories + [
+            Category(id: "review", name: "To Review", description: "Files TidyDrop is unsure about.", rules: "Use this when confidence is low.")
+        ]
     }
 
     private func run(_ message: String, operation: () async throws -> Void) async {

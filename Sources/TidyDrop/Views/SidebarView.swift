@@ -73,23 +73,33 @@ private struct BackendStatusView: View {
     @Bindable var store: AppStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Image(systemName: statusIcon)
-                    .foregroundStyle(.secondary)
-                Text(statusTitle)
-                    .font(.callout)
-                    .fontWeight(.medium)
+                Text("System status")
+                    .font(.callout.weight(.medium))
                 Spacer()
                 if store.isBusy {
                     ProgressView()
                         .controlSize(.small)
                 }
             }
-            Text(statusMessage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+
+            StatusLine(title: "Backend", value: store.backendStatus, icon: backendIcon)
+
+            StatusLine(title: "Ollama", value: ollamaTitle, icon: ollamaIcon)
+
+            if !store.ollamaRunning {
+                Text("Ollama is not running.\nStart it with: ollama serve")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            } else if store.models.isEmpty {
+                Text("No model found. Install a local Ollama model, then refresh.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+
             Button("Refresh") {
                 Task { await store.refreshStatus() }
             }
@@ -99,20 +109,38 @@ private struct BackendStatusView: View {
         .tidydropGlass(cornerRadius: 18)
     }
 
-    private var statusTitle: String {
-        if !store.ollamaRunning { return "Ollama offline" }
-        if store.models.isEmpty { return "No models installed" }
-        return "Ollama ready"
+    private var backendIcon: String {
+        store.backendStatus == "Ready" ? "checkmark.circle" : "clock"
     }
 
-    private var statusMessage: String {
-        if !store.ollamaRunning { return store.ollamaMessage }
-        if store.models.isEmpty { return "Install a local Ollama model, then refresh." }
-        return "Local classification is available."
+    private var ollamaTitle: String {
+        if !store.ollamaRunning { return "Not running" }
+        if store.models.isEmpty { return "No model found" }
+        return "Connected"
     }
 
-    private var statusIcon: String {
+    private var ollamaIcon: String {
         if store.ollamaRunning && !store.models.isEmpty { return "checkmark.circle" }
         return "exclamationmark.circle"
+    }
+}
+
+private struct StatusLine: View {
+    var title: String
+    var value: String
+    var icon: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+            Text("\(title):")
+                .font(.caption.weight(.medium))
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
     }
 }

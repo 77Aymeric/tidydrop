@@ -60,6 +60,15 @@ struct SortingTemplate: Identifiable, Hashable {
                 Category(id: "taxes", name: "Taxes", description: "Tax forms, declarations and fiscal documents", rules: ""),
                 Category(id: "review", name: "To Review", description: "Ambiguous administrative papers", rules: "Use this when confidence is low.")
             ]
+        ),
+        SortingTemplate(
+            id: "custom",
+            name: "Custom",
+            categories: [
+                Category(id: "documents", name: "Documents", description: "Files you want grouped as documents", rules: ""),
+                Category(id: "media", name: "Media", description: "Images, screenshots, audio and video", rules: ""),
+                Category(id: "review", name: "To Review", description: "Files TidyDrop is unsure about.", rules: "Use this when confidence is low.")
+            ]
         )
     ]
 }

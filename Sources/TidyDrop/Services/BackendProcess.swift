@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class BackendProcess {
     private var process: Process?
+    private(set) var lastError: String?
 
     var rootDirectory: URL {
         let bundleURL = Bundle.main.bundleURL
@@ -13,26 +14,44 @@ final class BackendProcess {
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     }
 
-    func startIfNeeded() {
-        guard process == nil else { return }
+    func startIfNeeded() -> Bool {
+        if let process, process.isRunning { return true }
+        process = nil
+        lastError = nil
 
         let root = rootDirectory
         let venvPython = root.appending(path: ".venv/bin/python")
-        let python = FileManager.default.isExecutableFile(atPath: venvPython.path) ? venvPython.path : "/usr/bin/python3"
+        guard FileManager.default.isExecutableFile(atPath: venvPython.path) else {
+            lastError = "Backend environment missing. Run ./script/build_and_run.sh to install it."
+            return false
+        }
 
         let task = Process()
         task.currentDirectoryURL = root
-        task.executableURL = URL(fileURLWithPath: python)
+        task.executableURL = venvPython
         task.arguments = ["-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "3838"]
         task.environment = ProcessInfo.processInfo.environment.merging(["PYTHONPATH": root.path]) { _, new in new }
-        task.standardOutput = Pipe()
-        task.standardError = Pipe()
+
+        let logDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".tidydrop")
+            .appending(path: "logs")
+        try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+        let logURL = logDirectory.appending(path: "backend.log")
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            handle.truncateFile(atOffset: 0)
+            task.standardOutput = handle
+            task.standardError = handle
+        }
 
         do {
             try task.run()
             process = task
+            return true
         } catch {
             process = nil
+            lastError = error.localizedDescription
+            return false
         }
     }
 

@@ -6,8 +6,13 @@ struct CategoryPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Categories")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Categories")
+                        .font(.headline)
+                    Text("TidyDrop will sort files into these folders.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button {
                     store.addCategory()
@@ -51,6 +56,11 @@ private struct CategoryCard: View {
             TextField("Description", text: $category.description)
             TextField("Rules", text: $category.rules, axis: .vertical)
                 .lineLimit(2...4)
+            if category.id == "review" {
+                Text("Files TidyDrop is unsure about.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .textFieldStyle(.plain)
         .padding(14)
