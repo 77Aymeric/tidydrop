@@ -160,7 +160,7 @@ case "$MODE" in
     stop_app
     build_app
     open_app
-    for _ in {1..20}; do
+    for _ in {1..180}; do
       if pgrep -x "$APP_NAME" >/dev/null && curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
         exit 0
       fi

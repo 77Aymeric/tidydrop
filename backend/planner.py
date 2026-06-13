@@ -19,6 +19,8 @@ def create_plan(request: PlanRequest) -> OperationPlan:
         filename = file.name
         if request.settings.apply_renaming and result.suggested_filename:
             filename = sanitize_filename(result.suggested_filename, fallback=file.name)
+            if file.extension:
+                filename = f"{Path(filename).stem}{file.extension}"
         target_dir = Path(request.settings.output_folder).expanduser() / sanitize_filename(category.name, fallback=category.id)
         target_path = target_dir / filename
         conflict = None

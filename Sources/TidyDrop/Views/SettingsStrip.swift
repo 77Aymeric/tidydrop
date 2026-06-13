@@ -65,16 +65,68 @@ struct SettingsStrip: View {
                 }
 
                 SettingRow(
-                    title: "Ollama text model",
-                    help: "Used for PDFs, documents, code and metadata."
+                    title: "Fast model",
+                    help: "First pass across every file. A small model keeps this phase responsive."
                 ) {
-                    Picker("Ollama text model", selection: $store.settings.textModel) {
+                    Picker("Fast model", selection: $store.settings.fastModel) {
                         Text("No model selected").tag("")
                         ForEach(store.models, id: \.self) { model in
                             Text(model).tag(model)
                         }
                     }
-                    .help("Used for PDFs, documents, code and metadata.")
+                    .help("Recommended role: qwen3.5:2b.")
+                }
+
+                SettingRow(
+                    title: "Expert text model",
+                    help: "Creates folders and rechecks uncertain documents, code and metadata."
+                ) {
+                    Picker("Expert text model", selection: $store.settings.expertTextModel) {
+                        Text("No model selected").tag("")
+                        ForEach(store.models, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                    .help("Recommended role: qwen3.5:9b.")
+                }
+
+                SettingRow(
+                    title: "Expert vision model",
+                    help: "Rechecks uncertain images. Falls back to the expert text model when empty."
+                ) {
+                    Picker("Expert vision model", selection: $store.settings.expertVisionModel) {
+                        Text("Use expert text model").tag("")
+                        ForEach(store.models, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                    .help("Optional specialist role: gemma4:e4b-it-qat.")
+                }
+
+                SettingRow(
+                    title: "Expert review",
+                    help: "Low-confidence results are classified again after the fast pass."
+                ) {
+                    Toggle("Recheck uncertain files with expert models.", isOn: $store.settings.expertReviewEnabled)
+                        .toggleStyle(.switch)
+                }
+
+                if store.settings.expertReviewEnabled {
+                    SettingRow(
+                        title: "Expert threshold",
+                        help: "Fast-pass results below this confidence are escalated."
+                    ) {
+                        HStack(spacing: 10) {
+                            Slider(value: $store.settings.expertReviewThreshold, in: 0.5...1, step: 0.05) {
+                                Text("Expert threshold")
+                            }
+                            Text(Formatters.percent(store.settings.expertReviewThreshold))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 42, alignment: .trailing)
+                        }
+                        .help("Recommended: 80%.")
+                    }
                 }
 
                 SettingRow(
@@ -92,6 +144,14 @@ struct SettingsStrip: View {
                     }
                     .help("Higher value means safer sorting, but more files to review.")
                 }
+
+                SettingRow(
+                    title: "AI timeout",
+                    help: "Stops a slow local model request before it runs too long."
+                ) {
+                    Stepper("Stop after \(store.settings.aiTimeoutSeconds) sec", value: $store.settings.aiTimeoutSeconds, in: 15...600, step: 15)
+                        .help("Applies to each Ollama request, including folder discovery.")
+                }
             }
 
             SettingsGroup(title: "Naming") {
@@ -106,11 +166,11 @@ struct SettingsStrip: View {
 
                 SettingRow(
                     title: "Rename automatically",
-                    help: "Off by default. You can review names before applying."
+                    help: "Uses the filenames shown in Review Plan after you have reviewed them."
                 ) {
-                    Toggle("Only enable this if you trust the suggestions.", isOn: $store.settings.applyRenaming)
+                    Toggle("Apply reviewed filename suggestions.", isOn: $store.settings.applyRenaming)
                         .toggleStyle(.switch)
-                        .help("Only enable this if you trust the suggestions.")
+                        .help("Every proposed filename remains editable before Apply.")
                 }
             }
         }

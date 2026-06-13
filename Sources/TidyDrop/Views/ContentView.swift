@@ -29,13 +29,22 @@ struct ContentView: View {
                 }
                 .disabled(store.folderURL == nil || store.isBusy)
 
-                Button {
-                    Task { await store.classifyAndPlan() }
-                } label: {
-                    Label("Classify", systemImage: "sparkles")
+                if store.canStopCurrentWork {
+                    Button(role: .cancel) {
+                        store.stopCurrentWork()
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle")
+                    }
+                    .keyboardShortcut(".", modifiers: [.command])
+                } else {
+                    Button {
+                        Task { await store.classifyAndPlan() }
+                    } label: {
+                        Label("Classify", systemImage: "sparkles")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(store.files.isEmpty || store.isBusy)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(store.files.isEmpty || store.isBusy)
 
                 Button {
                     isConfirmingApply = true

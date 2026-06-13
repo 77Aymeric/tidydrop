@@ -52,8 +52,9 @@ class ScanRequest(BaseModel):
     folder_path: str
     include_subfolders: bool = True
     ignored_extensions: list[str] = Field(default_factory=list)
+    excluded_paths: list[str] = Field(default_factory=list)
     ignored_folders: list[str] = Field(
-        default_factory=lambda: [".git", "node_modules", ".venv", "__pycache__", "dist", "build"]
+        default_factory=lambda: [".git", "node_modules", ".venv", "__pycache__", "dist", "build", "TidyDrop Sorted"]
     )
     max_file_size_mb: int = 50
 
@@ -79,10 +80,11 @@ class ClassificationSettings(BaseModel):
     model: str = ""
     text_model: str = ""
     vision_model: str = ""
+    ai_timeout_seconds: int = Field(default=120, ge=15, le=600)
     confidence_threshold: float = 0.75
     suggest_renaming: bool = True
     allow_ai_categories: bool = False
-    max_ai_categories: int = 8
+    max_ai_categories: int = 5
     fallback_category_id: str = "review"
     global_user_instructions: str = ""
 

@@ -71,8 +71,11 @@ async def classify(request: ClassifyRequest):
 
 @app.post("/api/categories/discover", response_model=DiscoverCategoriesResponse)
 async def categories_discover(request: DiscoverCategoriesRequest):
-    categories, added = await discover_categories(request.files, request.categories, request.settings)
-    return DiscoverCategoriesResponse(categories=categories, added_categories=added)
+    try:
+        categories, added = await discover_categories(request.files, request.categories, request.settings)
+        return DiscoverCategoriesResponse(categories=categories, added_categories=added)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Folder discovery failed: {exc}") from exc
 
 
 @app.post("/api/plan")

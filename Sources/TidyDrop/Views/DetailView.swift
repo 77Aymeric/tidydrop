@@ -14,6 +14,9 @@ struct DetailView: View {
                     .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
                         handleDrop(providers)
                     }
+                if store.isBusy || !store.progressTitle.isEmpty {
+                    ActivityProgressPanel(store: store)
+                }
                 if let message = store.errorMessage {
                     ErrorBanner(message: message)
                 }
@@ -48,6 +51,59 @@ struct DetailView: View {
             }
         }
         return true
+    }
+}
+
+private struct ActivityProgressPanel: View {
+    @Bindable var store: AppStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                if store.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.progressTitle)
+                        .font(.headline)
+                    Text(store.progressDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                if store.progressTotal > 0 {
+                    Text("\(store.progressCompleted) / \(store.progressTotal)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if store.progressTotal > 0 {
+                ProgressView(value: Double(store.progressCompleted), total: Double(store.progressTotal))
+            } else if store.isBusy {
+                ProgressView()
+                    .progressViewStyle(.linear)
+            }
+
+            if !store.activityLog.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(store.activityLog.prefix(4).enumerated()), id: \.offset) { _, entry in
+                        Text(entry)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .tidydropGlass(cornerRadius: 18)
     }
 }
 

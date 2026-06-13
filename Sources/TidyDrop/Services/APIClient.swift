@@ -46,12 +46,20 @@ struct APIClient {
                     .split(separator: ",")
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty },
+                excludedPaths: settings.outputFolder.isEmpty ? [] : [settings.outputFolder],
                 maxFileSizeMB: settings.maxFileSizeMB
             )
         )
     }
 
-    func classify(files: [FileItem], categories: [Category], settings: AppSettings) async throws -> [ClassificationResult] {
+    func classify(
+        files: [FileItem],
+        categories: [Category],
+        settings: AppSettings,
+        textModel: String,
+        visionModel: String,
+        confidenceThreshold: Double
+    ) async throws -> [ClassificationResult] {
         let fallback = categories.first { $0.name.localizedCaseInsensitiveContains("review") }?.id ?? categories.last?.id ?? "review"
         let response: ClassifyResponse = try await post(
             "/api/classify",
@@ -59,16 +67,37 @@ struct APIClient {
                 files: files,
                 categories: categories,
                 settings: ClassifySettings(
-                    textModel: settings.textModel,
-                    visionModel: settings.visionModel,
-                    confidenceThreshold: settings.confidenceThreshold,
+                    textModel: textModel,
+                    visionModel: visionModel,
+                    confidenceThreshold: confidenceThreshold,
                     suggestRenaming: settings.suggestRenaming,
                     allowAICategories: settings.allowAICategories,
+                    aiTimeoutSeconds: settings.aiTimeoutSeconds,
                     fallbackCategoryID: fallback
                 )
             )
         )
         return response.results
+    }
+
+    func classify(
+        file: FileItem,
+        categories: [Category],
+        settings: AppSettings,
+        model: String,
+        confidenceThreshold: Double
+    ) async throws -> ClassificationResult {
+        guard let result = try await classify(
+            files: [file],
+            categories: categories,
+            settings: settings,
+            textModel: model,
+            visionModel: model,
+            confidenceThreshold: confidenceThreshold
+        ).first else {
+            throw APIError.invalidResponse
+        }
+        return result
     }
 
     func discoverCategories(files: [FileItem], categories: [Category], settings: AppSettings) async throws -> DiscoverCategoriesResponse {
@@ -79,11 +108,12 @@ struct APIClient {
                 files: files,
                 categories: categories,
                 settings: ClassifySettings(
-                    textModel: settings.textModel,
-                    visionModel: settings.visionModel,
+                    textModel: settings.expertTextModel,
+                    visionModel: "",
                     confidenceThreshold: settings.confidenceThreshold,
                     suggestRenaming: settings.suggestRenaming,
                     allowAICategories: settings.allowAICategories,
+                    aiTimeoutSeconds: settings.aiTimeoutSeconds,
                     fallbackCategoryID: fallback
                 )
             )
@@ -136,6 +166,18 @@ struct APIClient {
         let _: OpenFolderResponse = try await post("/api/open-folder", body: OpenFolderRequest(folderPath: path))
     }
 
+    func unloadOllamaModels(_ models: [String]) async {
+        for model in Set(models.filter { !$0.isEmpty }) {
+            guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 5
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? encoder.encode(UnloadModelRequest(model: model))
+            _ = try? await URLSession.shared.data(for: request)
+        }
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
         let (data, response) = try await URLSession.shared.data(from: baseURL.appending(path: path))
         try validate(response: response, data: data)
@@ -145,6 +187,7 @@ struct APIClient {
     private func post<T: Decodable, Body: Encodable>(_ path: String, body: Body) async throws -> T {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = "POST"
+        request.timeoutInterval = 660
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -163,6 +206,16 @@ struct APIClient {
     }
 }
 
+private struct UnloadModelRequest: Codable {
+    var model: String
+    var keepAlive = 0
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case keepAlive = "keep_alive"
+    }
+}
+
 private struct ServerError: Codable {
     var detail: String
 }
@@ -175,12 +228,14 @@ private struct ScanRequest: Codable {
     var folderPath: String
     var includeSubfolders: Bool
     var ignoredExtensions: [String]
+    var excludedPaths: [String]
     var maxFileSizeMB: Int
 
     enum CodingKeys: String, CodingKey {
         case folderPath = "folder_path"
         case includeSubfolders = "include_subfolders"
         case ignoredExtensions = "ignored_extensions"
+        case excludedPaths = "excluded_paths"
         case maxFileSizeMB = "max_file_size_mb"
     }
 }
@@ -197,8 +252,9 @@ private struct ClassifySettings: Codable {
     var confidenceThreshold: Double
     var suggestRenaming: Bool
     var allowAICategories: Bool
+    var aiTimeoutSeconds: Int
     var fallbackCategoryID: String
-    var maxAICategories = 8
+    var maxAICategories = 5
 
     enum CodingKeys: String, CodingKey {
         case textModel = "text_model"
@@ -206,6 +262,7 @@ private struct ClassifySettings: Codable {
         case confidenceThreshold = "confidence_threshold"
         case suggestRenaming = "suggest_renaming"
         case allowAICategories = "allow_ai_categories"
+        case aiTimeoutSeconds = "ai_timeout_seconds"
         case fallbackCategoryID = "fallback_category_id"
         case maxAICategories = "max_ai_categories"
     }

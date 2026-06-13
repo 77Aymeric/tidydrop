@@ -86,16 +86,28 @@ def _extract(path: Path, kind: FileKind) -> tuple[str, str, str, str | None]:
     return extract_generic(path)
 
 
-def _iter_files(root: Path, include_subfolders: bool, ignored_folders: set[str]):
+def _iter_files(
+    root: Path,
+    include_subfolders: bool,
+    ignored_folders: set[str],
+    excluded_paths: set[Path],
+):
     if include_subfolders:
         for current_root_raw, dirs, files in os.walk(root):
-            dirs[:] = [name for name in dirs if name not in ignored_folders]
             current_root = Path(current_root_raw)
+            dirs[:] = [
+                name
+                for name in dirs
+                if name not in ignored_folders
+                and (current_root / name).resolve() not in excluded_paths
+            ]
             for name in files:
-                yield current_root / name
+                path = current_root / name
+                if path.resolve() not in excluded_paths:
+                    yield path
     else:
         for child in root.iterdir():
-            if child.is_file():
+            if child.is_file() and child.resolve() not in excluded_paths:
                 yield child
 
 
@@ -106,11 +118,12 @@ def scan_folder(request: ScanRequest) -> ScanResponse:
 
     ignored_exts = {ext.lower() for ext in request.ignored_extensions}
     ignored_folders = set(request.ignored_folders)
+    excluded_paths = {Path(path).expanduser().resolve() for path in request.excluded_paths if path}
     max_bytes = request.max_file_size_mb * 1024 * 1024
     files: list[FileItem] = []
     summary = ScanSummary()
 
-    for path in _iter_files(root, request.include_subfolders, ignored_folders):
+    for path in _iter_files(root, request.include_subfolders, ignored_folders, excluded_paths):
         try:
             if path.name == ".DS_Store" or path.suffix.lower() in ignored_exts:
                 continue
