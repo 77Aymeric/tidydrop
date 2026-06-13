@@ -8,6 +8,9 @@ The project is pre-1.0 and currently follows an evolving alpha workflow.
 
 ### Added
 
+- Standalone macOS release packaging with an embedded Python backend.
+- Developer ID signing, Apple notarization, DMG/ZIP, checksums, and GitHub Release automation.
+- Native TidyDrop application icon.
 - Native macOS SwiftUI application with local FastAPI engine management.
 - Native folder drag and drop, file rejection, and drag highlighting.
 - Bounded extraction for images, PDF, DOCX, text, code, XLSX, ZIP, media, and unknown files.

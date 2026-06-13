@@ -3,6 +3,7 @@
 **A native macOS utility that uses local Ollama models to understand, rename, and safely organize files.**
 
 [![CI](https://github.com/77Aymeric/tidydrop/actions/workflows/ci.yml/badge.svg)](https://github.com/77Aymeric/tidydrop/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/77Aymeric/tidydrop?include_prereleases)](https://github.com/77Aymeric/tidydrop/releases/latest)
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-black?logo=apple)](https://www.apple.com/macos/)
 [![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://www.swift.org/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -191,6 +192,17 @@ ollama serve
 
 ## Quick Start
 
+### Download
+
+Download the latest signed and notarized DMG from [GitHub Releases](https://github.com/77Aymeric/tidydrop/releases).
+
+1. Open the DMG.
+2. Drag TidyDrop into Applications.
+3. Install and start [Ollama](https://ollama.com/).
+4. Download the models you want to use.
+
+### Build from source
+
 ```bash
 git clone https://github.com/77Aymeric/tidydrop.git
 cd tidydrop
@@ -307,6 +319,7 @@ docs/                   Architecture and product documentation
 - [Safety Model](docs/SAFETY.md)
 - [Local API](docs/API.md)
 - [Development Guide](docs/DEVELOPMENT.md)
+- [Release Guide](docs/RELEASING.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)

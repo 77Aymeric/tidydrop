@@ -13,6 +13,9 @@ struct TidyDropApp: App {
                 .task {
                     await store.start()
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    store.shutdown()
+                }
         }
         .windowStyle(.titleBar)
         .commands {

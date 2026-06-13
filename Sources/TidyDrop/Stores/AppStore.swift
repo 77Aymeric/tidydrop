@@ -471,6 +471,10 @@ final class AppStore {
         }
     }
 
+    func shutdown() {
+        backend.stop()
+    }
+
     private var optionalOutputFolder: String? {
         settings.outputFolder.isEmpty ? nil : settings.outputFolder
     }

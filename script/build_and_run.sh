@@ -11,6 +11,7 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
@@ -39,7 +40,6 @@ find_python() {
     "/opt/homebrew/bin/python3.11"
     "/usr/local/bin/python3.12"
     "/usr/local/bin/python3.11"
-    "/Users/aymeric/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
     "python3"
   )
 
@@ -104,8 +104,9 @@ build_app() {
   build_binary="$(swift build --show-bin-path)/$APP_NAME"
 
   rm -rf "$APP_BUNDLE"
-  mkdir -p "$APP_MACOS"
+  mkdir -p "$APP_MACOS" "$APP_RESOURCES"
   cp "$build_binary" "$APP_BINARY"
+  cp "$ROOT_DIR/Assets/TidyDrop.icns" "$APP_RESOURCES/TidyDrop.icns"
   chmod +x "$APP_BINARY"
 
   cat >"$INFO_PLIST" <<PLIST
@@ -117,6 +118,8 @@ build_app() {
   <string>$APP_NAME</string>
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
+  <key>CFBundleIconFile</key>
+  <string>TidyDrop.icns</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
   <key>CFBundlePackageType</key>

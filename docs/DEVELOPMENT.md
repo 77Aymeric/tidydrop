@@ -114,3 +114,7 @@ backend/
 8. Apply in Copy mode.
 9. Confirm originals are unchanged and history exists.
 10. Preview and apply undo.
+
+## Distribution
+
+See [Releasing TidyDrop](RELEASING.md) for standalone packaging, Developer ID signing, notarization, DMG creation, checksums, and GitHub Release automation.
