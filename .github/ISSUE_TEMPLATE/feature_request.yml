@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a focused improvement for the local native app.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should TidyDrop solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+      description: Describe the native macOS workflow, not only the implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Native macOS interface
+        - Scanning and extraction
+        - AI classification
+        - Semantic folders
+        - Review and preview
+        - Apply, history, or undo
+        - Performance and memory
+        - Packaging and distribution
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and privacy
+      description: Explain how this preserves local-only, preview-first, never-delete, and never-overwrite behavior.
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Project constraints
+      options:
+        - label: This feature does not require cloud upload.
+          required: true
+        - label: This feature does not add deletion.
+          required: true

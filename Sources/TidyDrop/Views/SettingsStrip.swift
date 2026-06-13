@@ -4,10 +4,11 @@ import UniformTypeIdentifiers
 struct SettingsStrip: View {
     @Bindable var store: AppStore
     @State private var isChoosingOutputFolder = false
+    @State private var showsMoreSettings = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SettingsGroup(title: "Destination") {
+            SettingsGroup(title: "Essentials") {
                 SettingRow(
                     title: "File action",
                     help: "Choose what happens when you apply the plan."
@@ -25,154 +26,127 @@ struct SettingsStrip: View {
                 }
 
                 SortedFolderRow(store: store, isChoosingOutputFolder: $isChoosingOutputFolder)
-            }
 
-            SettingsGroup(title: "Scan") {
                 SettingRow(
-                    title: "Scan subfolders",
-                    help: "Include files inside folders too."
+                    title: "Smart folders",
+                    help: "Group files by project, client, subject and date."
                 ) {
-                    Toggle("Also scan folders inside the selected folder.", isOn: $store.settings.includeSubfolders)
+                    Toggle("Let AI create meaningful folders.", isOn: $store.settings.allowAICategories)
                         .toggleStyle(.switch)
-                        .help("Also scan folders inside the selected folder.")
                 }
 
                 SettingRow(
-                    title: "Ignored file types",
-                    help: "Skipped during scan."
+                    title: "Reviewed names",
+                    help: "Apply filename suggestions after you review them."
                 ) {
-                    TextField(".tmp, .DS_Store, .lock", text: $store.settings.ignoredExtensions)
-                        .help("Extensions or filenames skipped during scan.")
-                }
-
-                SettingRow(
-                    title: "Max file size to analyze",
-                    help: "Larger files are still listed, but analyzed with filename and metadata only."
-                ) {
-                    Stepper("\(store.settings.maxFileSizeMB) MB", value: $store.settings.maxFileSizeMB, in: 1...500)
-                        .help("Larger files are still listed, but analyzed with filename and metadata only.")
+                    Toggle("Use approved filename suggestions.", isOn: $store.settings.applyRenaming)
+                        .toggleStyle(.switch)
                 }
             }
 
-            SettingsGroup(title: "AI") {
-                SettingRow(
-                    title: "Let AI create folders",
-                    help: "TidyDrop first scans everything, suggests useful folders, then classifies all files again."
-                ) {
-                    Toggle("Create missing sorting folders before classification.", isOn: $store.settings.allowAICategories)
-                        .toggleStyle(.switch)
-                        .help("Sequential mode: discover folders from the whole scan, add them, then classify every file with the final list.")
-                }
+            DisclosureGroup(isExpanded: $showsMoreSettings) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Divider()
 
-                SettingRow(
-                    title: "Fast model",
-                    help: "First pass across every file. A small model keeps this phase responsive."
-                ) {
-                    Picker("Fast model", selection: $store.settings.fastModel) {
-                        Text("No model selected").tag("")
-                        ForEach(store.models, id: \.self) { model in
-                            Text(model).tag(model)
+                    SettingsGroup(title: "Scan") {
+                        SettingRow(
+                            title: "Scan subfolders",
+                            help: "Include files inside folders too."
+                        ) {
+                            Toggle("Also scan folders inside the selected folder.", isOn: $store.settings.includeSubfolders)
+                                .toggleStyle(.switch)
+                        }
+
+                        SettingRow(
+                            title: "Ignored file types",
+                            help: "Skipped during scan."
+                        ) {
+                            TextField(".tmp, .DS_Store, .lock", text: $store.settings.ignoredExtensions)
+                        }
+
+                        SettingRow(
+                            title: "Max file size to analyze",
+                            help: "Larger files use filename and metadata only."
+                        ) {
+                            Stepper("\(store.settings.maxFileSizeMB) MB", value: $store.settings.maxFileSizeMB, in: 1...500)
                         }
                     }
-                    .help("Recommended role: qwen3.5:2b.")
-                }
 
-                SettingRow(
-                    title: "Expert text model",
-                    help: "Creates folders and rechecks uncertain documents, code and metadata."
-                ) {
-                    Picker("Expert text model", selection: $store.settings.expertTextModel) {
-                        Text("No model selected").tag("")
-                        ForEach(store.models, id: \.self) { model in
-                            Text(model).tag(model)
-                        }
+                    SettingsGroup(title: "AI Models") {
+                        ModelPickerRow(
+                            title: "Fast model",
+                            help: "First pass across every file.",
+                            selection: $store.settings.fastModel,
+                            models: store.models,
+                            emptyLabel: "No model selected"
+                        )
+
+                        ModelPickerRow(
+                            title: "Expert text model",
+                            help: "Creates folders and rechecks uncertain text.",
+                            selection: $store.settings.expertTextModel,
+                            models: store.models,
+                            emptyLabel: "No model selected"
+                        )
+
+                        ModelPickerRow(
+                            title: "Expert vision model",
+                            help: "Rechecks uncertain images.",
+                            selection: $store.settings.expertVisionModel,
+                            models: store.models,
+                            emptyLabel: "Use expert text model"
+                        )
                     }
-                    .help("Recommended role: qwen3.5:9b.")
-                }
 
-                SettingRow(
-                    title: "Expert vision model",
-                    help: "Rechecks uncertain images. Falls back to the expert text model when empty."
-                ) {
-                    Picker("Expert vision model", selection: $store.settings.expertVisionModel) {
-                        Text("Use expert text model").tag("")
-                        ForEach(store.models, id: \.self) { model in
-                            Text(model).tag(model)
+                    SettingsGroup(title: "Review") {
+                        SettingRow(
+                            title: "Expert review",
+                            help: "Recheck uncertain fast-pass results."
+                        ) {
+                            Toggle("Use expert models for uncertain files.", isOn: $store.settings.expertReviewEnabled)
+                                .toggleStyle(.switch)
                         }
-                    }
-                    .help("Optional specialist role: gemma4:e4b-it-qat.")
-                }
 
-                SettingRow(
-                    title: "Expert review",
-                    help: "Low-confidence results are classified again after the fast pass."
-                ) {
-                    Toggle("Recheck uncertain files with expert models.", isOn: $store.settings.expertReviewEnabled)
-                        .toggleStyle(.switch)
-                }
-
-                if store.settings.expertReviewEnabled {
-                    SettingRow(
-                        title: "Expert threshold",
-                        help: "Fast-pass results below this confidence are escalated."
-                    ) {
-                        HStack(spacing: 10) {
-                            Slider(value: $store.settings.expertReviewThreshold, in: 0.5...1, step: 0.05) {
-                                Text("Expert threshold")
+                        if store.settings.expertReviewEnabled {
+                            SettingRow(
+                                title: "Expert threshold",
+                                help: "Results below this confidence are escalated."
+                            ) {
+                                PercentageSlider(value: $store.settings.expertReviewThreshold, range: 0.5...1)
                             }
-                            Text(Formatters.percent(store.settings.expertReviewThreshold))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(width: 42, alignment: .trailing)
                         }
-                        .help("Recommended: 80%.")
+
+                        SettingRow(
+                            title: "Minimum confidence",
+                            help: "Less confident files go to To Review."
+                        ) {
+                            PercentageSlider(value: $store.settings.confidenceThreshold)
+                        }
+                    }
+
+                    SettingsGroup(title: "Naming And Runtime") {
+                        SettingRow(
+                            title: "Suggest better names",
+                            help: "Generate filenames from file content."
+                        ) {
+                            Toggle("Suggest clearer filenames.", isOn: $store.settings.suggestRenaming)
+                                .toggleStyle(.switch)
+                        }
+
+                        SettingRow(
+                            title: "AI timeout",
+                            help: "Stop a slow local model request."
+                        ) {
+                            Stepper("Stop after \(store.settings.aiTimeoutSeconds) sec", value: $store.settings.aiTimeoutSeconds, in: 15...600, step: 15)
+                        }
                     }
                 }
-
-                SettingRow(
-                    title: "Minimum confidence",
-                    help: "Less confident files go to “To Review”."
-                ) {
-                    HStack(spacing: 10) {
-                        Slider(value: $store.settings.confidenceThreshold, in: 0...1, step: 0.05) {
-                            Text("Minimum confidence")
-                        }
-                        Text(Formatters.percent(store.settings.confidenceThreshold))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 42, alignment: .trailing)
-                    }
-                    .help("Higher value means safer sorting, but more files to review.")
-                }
-
-                SettingRow(
-                    title: "AI timeout",
-                    help: "Stops a slow local model request before it runs too long."
-                ) {
-                    Stepper("Stop after \(store.settings.aiTimeoutSeconds) sec", value: $store.settings.aiTimeoutSeconds, in: 15...600, step: 15)
-                        .help("Applies to each Ollama request, including folder discovery.")
-                }
+                .padding(.top, 10)
+            } label: {
+                Label("More Settings", systemImage: "slider.horizontal.3")
+                    .font(.callout.weight(.medium))
             }
-
-            SettingsGroup(title: "Naming") {
-                SettingRow(
-                    title: "Suggest better names",
-                    help: "AI can propose clearer filenames."
-                ) {
-                    Toggle("TidyDrop suggests names based on file content.", isOn: $store.settings.suggestRenaming)
-                        .toggleStyle(.switch)
-                        .help("TidyDrop suggests names based on file content.")
-                }
-
-                SettingRow(
-                    title: "Rename automatically",
-                    help: "Uses the filenames shown in Review Plan after you have reviewed them."
-                ) {
-                    Toggle("Apply reviewed filename suggestions.", isOn: $store.settings.applyRenaming)
-                        .toggleStyle(.switch)
-                        .help("Every proposed filename remains editable before Apply.")
-                }
-            }
+            .padding(.top, 2)
         }
         .controlSize(.small)
         .textFieldStyle(.roundedBorder)
@@ -182,6 +156,40 @@ struct SettingsStrip: View {
             if case .success(let url) = result {
                 store.chooseOutputFolder(url)
             }
+        }
+    }
+}
+
+private struct ModelPickerRow: View {
+    var title: String
+    var help: String
+    @Binding var selection: String
+    var models: [String]
+    var emptyLabel: String
+
+    var body: some View {
+        SettingRow(title: title, help: help) {
+            Picker(title, selection: $selection) {
+                Text(emptyLabel).tag("")
+                ForEach(models, id: \.self) { model in
+                    Text(model).tag(model)
+                }
+            }
+        }
+    }
+}
+
+private struct PercentageSlider: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double> = 0...1
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Slider(value: $value, in: range, step: 0.05)
+            Text(Formatters.percent(value))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .trailing)
         }
     }
 }

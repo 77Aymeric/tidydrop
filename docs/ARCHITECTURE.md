@@ -1,79 +1,95 @@
 # Architecture
 
-TidyDrop is a native macOS app with a local Python engine.
+TidyDrop is a native macOS app with a local Python engine and local Ollama inference. There is no web UI or cloud service.
 
-## High-Level Shape
+## System Diagram
 
-```text
-TidyDrop.app (SwiftUI)
-  -> starts local backend process
-  -> calls http://127.0.0.1:3838/api/*
-
-FastAPI backend
-  -> scans folders
-  -> extracts safe previews
-  -> calls local Ollama
-  -> creates operation plans
-  -> applies copy/move operations
-  -> writes history and undo data
-
-Ollama
-  -> runs locally at http://localhost:11434
+```mermaid
+graph TD
+    User["User"] --> App["TidyDrop.app<br/>SwiftUI"]
+    App --> Store["AppStore<br/>workflow state"]
+    Store --> Client["APIClient"]
+    Store --> Process["BackendProcess"]
+    Process --> API["FastAPI<br/>127.0.0.1:3838"]
+    Client --> API
+    API --> Scanner["Scanner and extractors"]
+    API --> OllamaClient["Ollama client"]
+    OllamaClient --> Ollama["Ollama<br/>localhost:11434"]
+    API --> Planner["Planner"]
+    Planner --> Operations["Copy/move operations"]
+    Operations --> Files["Local filesystem"]
+    Operations --> History["~/.tidydrop/runs"]
+    History --> Undo["Undo engine"]
 ```
 
-There is no web UI and no cloud service.
-
-## macOS App
+## Native macOS Layer
 
 Source: `Sources/TidyDrop`
 
-- `App/`: app entrypoint and macOS scene setup.
-- `Views/`: SwiftUI screens and panels.
-- `Stores/`: observable app state and user workflows.
-- `Services/`: local backend process and API client.
-- `Models/`: shared Swift data contracts.
-- `Support/`: formatting and UI compatibility helpers.
+| Area | Responsibility |
+| --- | --- |
+| `App/` | Scene setup and native application entrypoint |
+| `Views/` | Sidebar, settings, templates, review, preview, results, history |
+| `Stores/AppStore.swift` | End-to-end workflow, progress, cancellation, model routing |
+| `Services/APIClient.swift` | Typed local HTTP calls and Ollama unload requests |
+| `Services/BackendProcess.swift` | Python discovery, process lifecycle, logs |
+| `Models/` | Swift representations of settings, files, plans, runs, and templates |
+| `Support/` | Formatting and Liquid Glass compatibility |
 
-The app uses `NavigationSplitView`, native toolbar actions, SwiftUI forms, and system materials. Liquid Glass is applied through a compatibility helper so the UI stays native and adaptive.
+The app uses native `NavigationSplitView`, toolbars, file importers, drag and drop, sheets, controls, and system materials.
 
-## Backend
+## Local Engine
 
 Source: `backend`
 
-- `main.py`: FastAPI routes.
-- `scanner.py`: folder traversal, file kind detection, ignored folders, symlink boundary checks.
-- `extractors/`: bounded previews for file types.
-- `ollama_client.py`: local Ollama health, model listing and generation.
-- `classifier.py`: validation and fallback handling for AI output.
-- `planner.py`: safe target path generation.
-- `operations.py`: copy/move apply logic.
-- `history.py`: run persistence.
-- `undo.py`: undo preview and apply logic.
+| Module | Responsibility |
+| --- | --- |
+| `main.py` | FastAPI route boundary |
+| `scanner.py` | Traversal, exclusions, kind detection, symlink checks |
+| `extractors/` | Bounded read-only file understanding |
+| `ollama_client.py` | Health, model list, prompts, schemas, generation |
+| `classifier.py` | Category validation, confidence fallback, filename normalization |
+| `planner.py` | Explicit operation plan and conflict-safe target paths |
+| `operations.py` | Copy/move apply and status recording |
+| `history.py` | JSON run persistence |
+| `undo.py` | Reverse-order undo preview and application |
+
+## Trust Boundaries
+
+```mermaid
+flowchart LR
+    A["Untrusted user files"] -->|"read-only bounded extractors"| B["Typed FileItem"]
+    B -->|"local prompt"| C["Untrusted model output"]
+    C -->|"schema + semantic validation"| D["ClassificationResult"]
+    D -->|"explicit planner"| E["OperationPlan"]
+    E -->|"human review + Apply"| F["Filesystem operation"]
+```
+
+User files and model output are both treated as untrusted. Only validated typed data can reach the planner, and only an explicit plan can reach apply.
 
 ## Data Storage
 
-TidyDrop writes app data under the user's home directory:
+TidyDrop writes application state under the user's home directory:
 
-- `~/.tidydrop/config.json`
-- `~/.tidydrop/runs/<run_id>.json`
-- `~/.tidydrop/undone/<run_id>/`
+```text
+~/.tidydrop/
+├── config.json
+├── logs/
+│   └── backend.log
+├── runs/
+│   └── <run_id>.json
+└── undone/
+    └── <run_id>/
+```
 
-## API Surface
+The selected output folder contains the organized copies or moved originals. By default it is `TidyDrop Sorted` inside the selected source folder.
 
-The backend exposes local-only HTTP endpoints:
+## Process Lifecycle
 
-- `GET /api/health`
-- `GET /api/ollama/models`
-- `POST /api/scan`
-- `POST /api/classify`
-- `POST /api/plan`
-- `POST /api/apply`
-- `GET /api/history`
-- `GET /api/history/{run_id}`
-- `POST /api/undo/preview`
-- `POST /api/undo/apply`
-- `POST /api/open-folder`
+The packaged SwiftUI app starts the local Python backend when needed, polls `/api/health`, and reports startup failures with the backend log path. The backend binds to loopback only.
 
-## Why Keep Python?
+Ollama is a separate local service. TidyDrop can scan and preview while Ollama is unavailable, but cannot classify.
 
-Python keeps extraction and file handling simple while the macOS app stays native. The boundary is narrow: SwiftUI owns the product experience; FastAPI owns the local engine.
+## Why Swift and Python
+
+SwiftUI provides a native macOS interaction model, window behavior, system materials, Finder integration, and accessible controls. Python provides mature document extraction libraries and conservative filesystem primitives. Their boundary is a small typed loopback API.

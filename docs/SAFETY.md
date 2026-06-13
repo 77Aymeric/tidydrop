@@ -13,6 +13,7 @@ TidyDrop is intentionally conservative. It is an AI-assisted sorter, not an auto
 - Never invent AI categories.
 - Always keep run history.
 - Always provide undo for completed operations.
+- Never download models without explicit user action.
 
 ## Copy Mode
 
@@ -56,6 +57,8 @@ TidyDrop validates that:
 
 Invalid or low-confidence responses are fallback results, not hard failures.
 
+Reasons that rely on file type or extension without semantic evidence are capped at `0.35` confidence. AI-created generic folders are rejected before classification.
+
 ## File Extraction Boundaries
 
 Extraction is bounded and read-only:
@@ -68,3 +71,18 @@ Extraction is bounded and read-only:
 - Media/unknown: metadata only.
 
 Archives are never extracted by default.
+
+## Local Network Boundary
+
+The FastAPI engine binds to `127.0.0.1:3838`. Ollama is expected at `localhost:11434`. TidyDrop contains no cloud provider integration.
+
+Prompts may contain local absolute paths and bounded excerpts because they remain on the local machine. The selected local models are part of the user's trusted environment.
+
+## Model and Memory Safety
+
+- Models are never downloaded automatically.
+- Image bytes are loaded lazily for vision requests.
+- Large images are rejected for vision analysis.
+- Requests use configurable timeouts.
+- Long workflows expose a Stop action.
+- Models are unloaded between major phases where possible.

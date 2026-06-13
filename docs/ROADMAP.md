@@ -1,35 +1,52 @@
 # Roadmap
 
-TidyDrop is currently an early native MVP. The priorities below keep it safe and local-first.
+TidyDrop is an alpha-stage native macOS utility. Roadmap work must preserve the local-only, preview-first, never-delete safety model.
 
-## Near Term
+## Product Quality
 
-- Better visual polish for the native macOS review table.
-- More file preview details in the inspector.
-- First-run onboarding for Ollama setup.
-- Model capability detection for text vs vision models.
-- More complete operation conflict reports.
-- Exportable run reports.
+- Dedicated first-run model setup and capability checks.
+- Better review-table density and keyboard navigation.
+- Richer result reports and exportable run summaries.
+- Persisted user settings and category collections.
+- More representative product screenshots and demo fixtures.
+- Accessibility and VoiceOver pass.
 
 ## File Understanding
 
-- Image thumbnails in the native preview.
-- Video thumbnail sampling without modifying originals.
-- Audio metadata extraction.
-- Optional OCR for scanned PDFs.
-- Safer archive manifest inspection for more archive formats.
+- Image thumbnails throughout review.
+- Optional local OCR for scanned documents.
+- Video frame sampling with strict limits.
+- Richer local audio metadata.
+- More archive manifest formats without extraction.
+- Better date/entity linking across project files.
 
-## Packaging
+## AI Quality
 
-- Signed local development builds.
-- Release zip or DMG.
-- Notarization.
-- Optional launch helper for the local backend.
+- Evaluate folder discovery and classification on reproducible mixed-project corpora.
+- Detect model capability before assigning text or vision roles.
+- Improve confidence calibration using measured outcomes.
+- Add duplicate/near-duplicate and version-family signals.
+- Add user-approved learning from prior local runs without cloud storage.
+
+## Performance
+
+- Batch or cache safe repeated previews.
+- Measure model loading, generation time, memory, and cancellation latency.
+- Reduce redundant expert reviews.
+- Add resource-aware presets for 8 GB, 16 GB, and larger Macs.
+
+## Distribution
+
+- Signed release builds.
+- Notarized ZIP or DMG.
+- Stable release automation and checksums.
+- Clear bundled-backend strategy without bundling Ollama models.
 
 ## Not Planned
 
-- Cloud file upload.
+- Cloud upload or remote AI providers.
 - Deletion workflows.
-- Automatic apply without preview.
-- Running user code.
-- Extracting archives into user folders without a future explicit confirmation design.
+- Automatic apply without review.
+- Executing discovered code.
+- Silently extracting archives.
+- Downloading multi-gigabyte models without explicit user action.

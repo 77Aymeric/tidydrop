@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible TidyDrop problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve TidyDrop. Remove personal filenames and paths before posting logs or screenshots.
+  - type: input
+    id: version
+    attributes:
+      label: TidyDrop version or commit
+      placeholder: 6931b01 or main
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.x
+    validations:
+      required: true
+  - type: input
+    id: models
+    attributes:
+      label: Ollama models and versions
+      placeholder: qwen3.5:2b, qwen3.5:9b, gemma4:e4b-it-qat
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Workflow phase
+      options:
+        - App or backend startup
+        - Scan or preview
+        - Folder discovery
+        - Classification
+        - Review plan
+        - Apply
+        - History or undo
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include the expected behavior and the actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open TidyDrop
+        2. Drop a folder
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Do not include personal file paths or document content.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety impact
+      options:
+        - label: This affected or could affect copy, move, overwrite, privacy, or undo guarantees.

@@ -41,6 +41,20 @@ python -m ruff check backend tests
 - Undo behavior is preserved or improved.
 - New backend behavior has focused tests.
 - New macOS UI uses native SwiftUI controls unless there is a specific reason not to.
+- Prompt or schema changes update `docs/PROMPTS.md`.
+- User-facing changes update `CHANGELOG.md` and relevant screenshots/docs.
+
+## Pull Requests
+
+Keep pull requests focused and explain:
+
+- the user problem;
+- the chosen behavior;
+- safety implications;
+- tests performed;
+- screenshots for visible macOS changes.
+
+Use the repository pull request template. Draft PRs are welcome for early feedback.
 
 ## Areas That Need Care
 

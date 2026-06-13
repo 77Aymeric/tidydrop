@@ -1,69 +1,86 @@
 # Local API
 
-The API is intended for the native macOS app. It binds to `127.0.0.1:3838`.
+The native app talks to a FastAPI service bound to `127.0.0.1:3838`. It is an internal local API, not a remotely hosted service.
 
-## Health
+Interactive OpenAPI documentation is available at `http://127.0.0.1:3838/docs` while the backend is running.
 
-```http
-GET /api/health
-```
+## Endpoints
 
-Returns backend status and whether local Ollama is reachable.
-
-## Models
-
-```http
-GET /api/ollama/models
-```
-
-Lists installed Ollama models.
+| Method | Path | Behavior |
+| --- | --- | --- |
+| `GET` | `/api/health` | Backend status and Ollama reachability |
+| `GET` | `/api/ollama/models` | Names returned by Ollama `/api/tags` |
+| `POST` | `/api/scan` | Read-only scan and bounded extraction |
+| `POST` | `/api/categories/discover` | Semantic category discovery across a file sample |
+| `POST` | `/api/classify` | Classification for supplied files and categories |
+| `POST` | `/api/plan` | Builds copy/move operations without applying them |
+| `POST` | `/api/apply` | Applies enabled entries from an explicit plan |
+| `GET` | `/api/history` | Lists saved operation plans |
+| `GET` | `/api/history/{run_id}` | Loads one saved plan |
+| `POST` | `/api/undo/preview` | Computes reverse operations |
+| `POST` | `/api/undo/apply` | Applies the computed undo behavior |
+| `POST` | `/api/open-folder` | Opens an existing local folder with Finder |
 
 ## Scan
 
-```http
-POST /api/scan
+`POST /api/scan`
+
+```json
+{
+  "folder_path": "/Users/example/Downloads",
+  "include_subfolders": true,
+  "ignored_extensions": [".tmp", ".lock"],
+  "excluded_paths": ["/Users/example/Downloads/TidyDrop Sorted"],
+  "max_file_size_mb": 50
+}
 ```
 
-Scans a local folder and returns `FileItem` objects plus a summary. Scanning is read-only.
+The response contains typed `FileItem` objects and a summary by file kind. Scanning never changes the source folder.
 
-## Classify
+## Category Discovery
 
-```http
-POST /api/classify
-```
+`POST /api/categories/discover`
 
-Classifies scanned files into user-defined categories through local Ollama. Invalid AI output falls back to review.
+The request contains scanned files, existing categories, and classification settings. When AI categories are disabled, the endpoint returns the existing set with a guaranteed `To Review` category.
+
+Discovery errors return `502` and do not create a partial operation plan.
+
+## Classification
+
+`POST /api/classify`
+
+The backend classifies supplied files sequentially through Ollama. Individual model failures become zero-confidence `To Review` results rather than aborting the complete response.
 
 ## Plan
 
-```http
-POST /api/plan
-```
+`POST /api/plan`
 
-Creates safe copy/move operations from classification results.
+The planner requires:
+
+- source folder;
+- scanned files;
+- category definitions;
+- classification results;
+- output folder;
+- copy or move mode;
+- renaming settings.
+
+It returns an `OperationPlan` with no filesystem side effects.
 
 ## Apply
 
-```http
-POST /api/apply
-```
+`POST /api/apply`
 
-Applies enabled operations. The backend never deletes or overwrites files.
+Only the supplied explicit plan is applied. Disabled entries are skipped. Targets are checked again at apply time to prevent races and overwrite.
 
-## History
-
-```http
-GET /api/history
-GET /api/history/{run_id}
-```
-
-Lists previous runs and returns run details.
+The completed plan, actual paths, statuses, conflicts, and errors are persisted in run history.
 
 ## Undo
 
-```http
-POST /api/undo/preview
-POST /api/undo/apply
-```
+`POST /api/undo/preview` and `POST /api/undo/apply`
 
-Previews and applies undo operations for a previous run.
+Undo is based on persisted actual paths, not a new AI decision. Copy undo moves generated copies into the undo holding directory; move undo restores originals where possible.
+
+## Errors
+
+Validation errors use FastAPI/Pydantic responses. Filesystem request errors generally return `400`, missing history/folders return `404`, and failed folder discovery returns `502`.
