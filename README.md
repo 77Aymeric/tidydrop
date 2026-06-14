@@ -16,6 +16,14 @@ TidyDrop scans a folder without executing its contents, extracts bounded preview
 
 It is not a cloud organizer, an automatic cleaner, or a deletion tool.
 
+## Download
+
+The current public build is **TidyDrop v0.1.0-alpha.1** for Apple Silicon Macs running macOS 26 or later.
+
+[**Download the signed and notarized DMG**](https://github.com/77Aymeric/tidydrop/releases/download/v0.1.0-alpha.1/TidyDrop-0.1.0-alpha.1-macos-arm64.dmg)
+
+The app is signed and notarized by Apple, and includes its local backend. Ollama and its models remain separate so TidyDrop never downloads multi-gigabyte models without permission. A ZIP archive and SHA-256 checksums are also available on the [release page](https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.1).
+
 ## Why TidyDrop
 
 Most file organizers group by extension. TidyDrop is designed to group by meaning.
@@ -177,31 +185,56 @@ Copy mode is the default. Completed runs are stored in `~/.tidydrop/runs/<run_id
 - If a destination already exists, TidyDrop chooses an alternate path such as `Document (1).pdf`.
 - Missing files, disabled actions, conflicts, and errors remain visible in the run record.
 
-## Requirements
+## Install and Run
 
-- macOS 26+
-- Xcode 26+ with Swift 6.2
-- Python 3.11+
-- Ollama for AI classification
+### App requirements
 
-Scanning and preview generation work without Ollama. Classification requires the local Ollama service:
+- Apple Silicon Mac
+- macOS 26 or later
+- [Ollama](https://ollama.com/) for AI classification
+- at least one compatible local Ollama model
+
+Python and Xcode are **not** required when installing the release.
+
+### Installation
+
+1. Download [`TidyDrop-0.1.0-alpha.1-macos-arm64.dmg`](https://github.com/77Aymeric/tidydrop/releases/download/v0.1.0-alpha.1/TidyDrop-0.1.0-alpha.1-macos-arm64.dmg).
+2. Open the DMG and drag TidyDrop into `Applications`.
+3. Install Ollama, then start it:
+
+   ```bash
+   ollama serve
+   ```
+
+4. Pull the recommended models, or choose smaller installed alternatives:
+
+   ```bash
+   ollama pull qwen3.5:2b
+   ollama pull qwen3.5:9b
+   ollama pull gemma4:e4b-it-qat
+   ```
+
+5. Launch TidyDrop, choose or drop a folder, review the settings, then scan.
+
+The app can scan and preview files while Ollama is unavailable. Semantic folder discovery and classification require Ollama to be running.
+
+### Verify the download
+
+The release page includes `SHA256SUMS.txt`. From the directory containing the downloaded files:
 
 ```bash
-ollama serve
+shasum -a 256 -c SHA256SUMS.txt
 ```
 
-## Quick Start
+macOS should identify the installed app as a notarized Developer ID application:
 
-### Download
-
-Download the latest signed and notarized DMG from [GitHub Releases](https://github.com/77Aymeric/tidydrop/releases).
-
-1. Open the DMG.
-2. Drag TidyDrop into Applications.
-3. Install and start [Ollama](https://ollama.com/).
-4. Download the models you want to use.
+```bash
+spctl --assess --type execute -vv /Applications/TidyDrop.app
+```
 
 ### Build from source
+
+Source development requires macOS 26+, Xcode 26 with Swift 6.2, and Python 3.11+.
 
 ```bash
 git clone https://github.com/77Aymeric/tidydrop.git
@@ -327,7 +360,9 @@ docs/                   Architecture and product documentation
 
 ## Project Status
 
-TidyDrop is an alpha-stage open-source project. The safety model, scan/classify/plan/apply workflow, history, and undo are implemented. Packaging, notarization, richer media understanding, and broader end-to-end UI testing are still evolving.
+TidyDrop is an alpha-stage open-source project. The native scan/classify/plan/apply workflow, semantic folder discovery, reviewed renaming, file preview, history, cancellation, and undo are implemented.
+
+The first public Apple Silicon build, [`v0.1.0-alpha.1`](https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.1), is signed, hardened, notarized by Apple, and available as a DMG or ZIP. Current alpha limitations include metadata-only understanding for audio/video and many archive formats, model-dependent classification quality, and limited end-to-end UI automation.
 
 ## License
 

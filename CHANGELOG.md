@@ -6,6 +6,10 @@ The project is pre-1.0 and currently follows an evolving alpha workflow.
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## [0.1.0-alpha.1] - 2026-06-14
+
 ### Added
 
 - Standalone macOS release packaging with an embedded Python backend.
@@ -32,3 +36,14 @@ The project is pre-1.0 and currently follows an evolving alpha workflow.
 - Existing files are never overwritten.
 - Apply requires an explicit plan and user confirmation.
 - Copy undo moves generated files to a holding folder instead of deleting them.
+
+### Distribution
+
+- Published a standalone Apple Silicon DMG and ZIP on GitHub Releases.
+- Signed the app and nested native backend libraries with Developer ID.
+- Enabled the hardened runtime.
+- Notarized both the application and DMG with Apple.
+- Stapled notarization tickets to the distributed artifacts.
+- Published SHA-256 checksums for release verification.
+
+[0.1.0-alpha.1]: https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.1

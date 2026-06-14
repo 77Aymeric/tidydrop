@@ -54,13 +54,29 @@ xcrun notarytool store-credentials TidyDrop \
 
 ## Publishing
 
-Push a version tag:
+The first public release was packaged and notarized locally, then uploaded with:
 
 ```bash
-git tag v0.1.0-alpha.1
+git tag -a v0.1.0-alpha.1 -m "TidyDrop v0.1.0-alpha.1"
 git push origin v0.1.0-alpha.1
+gh release create v0.1.0-alpha.1 \
+  dist/release/TidyDrop-0.1.0-alpha.1-macos-arm64.dmg \
+  dist/release/TidyDrop-0.1.0-alpha.1-macos-arm64.zip \
+  dist/release/SHA256SUMS.txt
 ```
 
-The Release workflow builds, signs, notarizes, verifies, and publishes the artifacts as a prerelease.
+The Release workflow is currently opt-in and does not run when a tag is pushed. This prevents failed public release jobs until the required Apple secrets are configured in the repository.
 
-The workflow can also be started manually from GitHub Actions with a version input.
+After the secrets above are configured, start the workflow manually from GitHub Actions with a version input. It builds, signs, notarizes, verifies, tags, and publishes the release.
+
+## Published Release
+
+`v0.1.0-alpha.1` was published on June 14, 2026:
+
+- [GitHub release](https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.1)
+- signed Developer ID application;
+- hardened runtime enabled;
+- app and DMG accepted by Apple notarization;
+- stapled notarization tickets;
+- Gatekeeper assessment accepted;
+- DMG, ZIP, and SHA-256 checksums attached.
