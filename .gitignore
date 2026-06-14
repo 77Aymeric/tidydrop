@@ -12,6 +12,7 @@ build/
 .env
 .tidydrop-test/
 .playwright-mcp/
+.codex/
 .build/
 DerivedData/
 *.xcuserstate
