@@ -8,6 +8,26 @@ The project is pre-1.0 and currently follows an evolving alpha workflow.
 
 No unreleased changes yet.
 
+## [0.1.0-alpha.2] - 2026-06-15
+
+### Security
+
+- Added per-launch bearer authentication and random loopback ports for the local backend.
+- Moved canonical scan paths and operation plans to server-owned state.
+- Restricted Apply to controlled review edits and recomputed targets inside validated roots.
+- Removed the arbitrary-path folder-opening API.
+- Validated history and plan identifiers before filesystem access.
+- Added within-plan conflict reservation and exclusive no-overwrite target creation.
+- Isolated complex file parsers with time and resource limits.
+- Strengthened filename normalization against controls, invisible formatting, and bidi characters.
+
+### Reliability
+
+- Added UUID material to run IDs.
+- Replaced first-file category sampling with deterministic stratified sampling.
+- Added API round-trip, authentication, forged-plan, corrupt-file, timeout, and Swift contract tests.
+- Added a locked Python dependency graph, pinned CI actions, standalone packaging smoke tests, checksums, and a CycloneDX SBOM.
+
 ## [0.1.0-alpha.1] - 2026-06-14
 
 ### Added
@@ -47,3 +67,4 @@ No unreleased changes yet.
 - Published SHA-256 checksums for release verification.
 
 [0.1.0-alpha.1]: https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.1
+[0.1.0-alpha.2]: https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.2

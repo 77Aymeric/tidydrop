@@ -24,7 +24,7 @@ No discovered file is executed. ZIP files are listed but not extracted.
 
 ## Phase 3: Discover Semantic Folders
 
-When Smart folders is enabled, the expert text model receives a bounded sample of up to 200 files. Each sample includes:
+When Smart folders is enabled, the expert text model receives a deterministic stratified sample of up to 200 files across subfolders, file kinds, and modification months. Each sample includes:
 
 - filename;
 - relative path;
@@ -63,7 +63,7 @@ The expert result replaces the fast result only when it is judged better by the 
 
 ## Phase 6: Build a Plan
 
-The planner combines files, categories, classifications, and settings into immutable-looking operation entries with:
+The planner combines the trusted server-side scan, categories, classifications, and settings into operation entries with:
 
 - source path;
 - destination path;
@@ -75,7 +75,7 @@ The planner combines files, categories, classifications, and settings into immut
 - conflict metadata;
 - enabled state.
 
-No filesystem change happens here. Existing destinations are converted to alternate paths.
+No filesystem change happens here. The canonical plan is stored server-side under an opaque ID. Existing destinations and duplicate targets inside the same plan are converted to alternate paths.
 
 ## Phase 7: Human Review
 
@@ -89,14 +89,16 @@ The user can:
 - disable the operation;
 - inspect confidence and reasoning.
 
-Edits update the final target path before Apply.
+The UI previews edits immediately. On Apply, only operation IDs, enabled state, category IDs, and proposed filenames are sent; source and target paths cannot be replaced by the client.
 
 ## Phase 8: Apply
 
 Apply processes only enabled plan entries:
 
-- `copy` uses `shutil.copy2`;
-- `move` uses `shutil.move`;
+- the backend reloads the canonical server-stored plan;
+- all source and target paths are revalidated against the scanned and output roots;
+- copy targets are created exclusively, so an existing file cannot be overwritten;
+- move first creates the target safely, then removes the original;
 - parent folders are created as needed;
 - a final target existence check prevents overwrite;
 - every status and actual path is written to run history.
@@ -115,3 +117,5 @@ Undo is previewed before it is applied.
 The native app displays the current phase, file, model, completed count, and activity log. Long-running work can be stopped from the UI.
 
 Ollama calls have a configurable timeout from 15 to 600 seconds. The default is 120 seconds. Image bytes are loaded only for vision requests, and images above the configured vision limit are rejected.
+
+Complex document parsing runs in a separate worker with bounded CPU, memory, output, and wall-clock time. A failed parser produces a metadata-only preview instead of blocking the scan.

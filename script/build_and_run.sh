@@ -6,8 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="TidyDrop"
 BUNDLE_ID="app.tidydrop.TidyDrop"
 MIN_SYSTEM_VERSION="26.0"
-PORT="3838"
 DIST_DIR="$ROOT_DIR/dist"
+RUNTIME_DIR="$HOME/.tidydrop/runtime"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
@@ -19,13 +19,8 @@ cd "$ROOT_DIR"
 
 stop_app() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  if command -v lsof >/dev/null 2>&1; then
-    local pids
-    pids="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
-    if [[ -n "$pids" ]]; then
-      kill $pids >/dev/null 2>&1 || true
-    fi
-  fi
+  pkill -x "TidyDropBackend" >/dev/null 2>&1 || true
+  rm -f "$RUNTIME_DIR"/session-*.json
 }
 
 find_python() {
@@ -71,30 +66,29 @@ PY
 }
 
 ensure_backend_env() {
+  if [[ -x .venv/bin/python ]]; then
+    if .venv/bin/python - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+    then
+      if ! .venv/bin/python -c "import uvicorn, fastapi" >/dev/null 2>&1; then
+        .venv/bin/python -m pip install -e ".[dev]"
+      fi
+      return
+    fi
+    rm -rf .venv
+  fi
+
   local python
   if ! python="$(find_python)"; then
     echo "Python 3.11+ is required to create the local backend environment." >&2
     exit 1
   fi
+  "$python" -m venv .venv
 
-  if [[ -x .venv/bin/python ]]; then
-    if ! .venv/bin/python - <<'PY' >/dev/null 2>&1
-import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
-PY
-    then
-      rm -rf .venv
-    fi
-  fi
-
-  if [[ ! -x .venv/bin/python ]]; then
-    "$python" -m venv .venv
-  fi
-
-  if ! .venv/bin/python -c "import uvicorn, fastapi" >/dev/null 2>&1; then
-    .venv/bin/python -m pip install --upgrade pip
-    .venv/bin/python -m pip install -e ".[dev]"
-  fi
+  .venv/bin/python -m pip install --upgrade pip
+  .venv/bin/python -m pip install -e ".[dev]"
 }
 
 build_app() {
@@ -164,12 +158,18 @@ case "$MODE" in
     build_app
     open_app
     for _ in {1..180}; do
-      if pgrep -x "$APP_NAME" >/dev/null && curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
-        exit 0
+      session_file="$(find "$RUNTIME_DIR" -name 'session-*.json' -type f -print 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$session_file" && -f "$session_file" ]]; then
+        port="$(SESSION_FILE="$session_file" .venv/bin/python -c 'import json, os; print(json.load(open(os.environ["SESSION_FILE"]))["port"])' 2>/dev/null || true)"
+        token="$(SESSION_FILE="$session_file" .venv/bin/python -c 'import json, os; print(json.load(open(os.environ["SESSION_FILE"]))["token"])' 2>/dev/null || true)"
+        if [[ -n "$port" && -n "$token" ]] &&
+          curl -fsS -H "Authorization: Bearer $token" "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
+          exit 0
+        fi
       fi
       sleep 0.5
     done
-    echo "$APP_NAME did not become ready on port $PORT" >&2
+    echo "$APP_NAME did not publish a healthy authenticated backend session." >&2
     exit 1
     ;;
   *)

@@ -43,6 +43,8 @@ Document (1).pdf
 
 If an operation cannot be performed safely, it is marked as skipped, missing, conflict or error. It should not fail silently.
 
+The preview also reserves targets across the complete plan, so two operations proposing the same path are shown as a conflict before Apply. Apply uses exclusive file creation and repeats conflict resolution to cover filesystem races.
+
 ## AI Output Validation
 
 Ollama responses are treated as untrusted text.
@@ -72,9 +74,13 @@ Extraction is bounded and read-only:
 
 Archives are never extracted by default.
 
+PDF, DOCX, XLSX, and archive parsers run in a child process with an 8-second parent timeout plus CPU, address-space, and output-size limits where macOS supports them. Corrupt, pathological, or timed-out inputs fall back to metadata-only summaries.
+
 ## Local Network Boundary
 
-The FastAPI engine binds to `127.0.0.1:3838`. Ollama is expected at `localhost:11434`. TidyDrop contains no cloud provider integration.
+The FastAPI engine binds to a random port on `127.0.0.1`. Each launch uses a cryptographically random bearer token known only to the native app and backend. Canonical scan roots, file paths, and plans stay server-side; Apply cannot supply arbitrary source or destination paths. History and plan identifiers are validated before they become filenames.
+
+Ollama is expected at `localhost:11434`. TidyDrop contains no cloud provider integration.
 
 Prompts may contain local absolute paths and bounded excerpts because they remain on the local machine. The selected local models are part of the user's trusted environment.
 

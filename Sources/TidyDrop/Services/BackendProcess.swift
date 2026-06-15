@@ -3,7 +3,10 @@ import Foundation
 @MainActor
 final class BackendProcess {
     private var process: Process?
+    private var sessionFileURL: URL?
     private(set) var lastError: String?
+    private(set) var baseURL: URL?
+    private(set) var sessionToken: String?
 
     var rootDirectory: URL {
         let bundleURL = Bundle.main.bundleURL
@@ -15,12 +18,29 @@ final class BackendProcess {
     }
 
     func startIfNeeded() -> Bool {
-        if let process, process.isRunning { return true }
+        if let process, process.isRunning, baseURL != nil, sessionToken != nil { return true }
         process = nil
         lastError = nil
+        baseURL = nil
+        sessionToken = nil
+
+        let token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let sessionURL = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".tidydrop/runtime")
+            .appending(path: "session-\(UUID().uuidString).json")
+        try? FileManager.default.createDirectory(
+            at: sessionURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? FileManager.default.removeItem(at: sessionURL)
+        sessionFileURL = sessionURL
 
         if let bundledBackendURL {
-            return startBundledBackend(at: bundledBackendURL)
+            guard startBundledBackend(at: bundledBackendURL, token: token, sessionURL: sessionURL) else {
+                return false
+            }
+            return loadSession(expectedToken: token, from: sessionURL)
         }
 
         let root = rootDirectory
@@ -33,15 +53,20 @@ final class BackendProcess {
         let task = Process()
         task.currentDirectoryURL = root
         task.executableURL = venvPython
-        task.arguments = ["-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "3838"]
-        task.environment = ProcessInfo.processInfo.environment.merging(["PYTHONPATH": root.path]) { _, new in new }
+        task.arguments = ["-m", "backend.standalone"]
+        task.environment = ProcessInfo.processInfo.environment.merging([
+            "PYTHONPATH": root.path,
+            "TIDYDROP_PORT": "0",
+            "TIDYDROP_SESSION_TOKEN": token,
+            "TIDYDROP_SESSION_FILE": sessionURL.path
+        ]) { _, new in new }
 
         configureLogs(for: task)
 
         do {
             try task.run()
             process = task
-            return true
+            return loadSession(expectedToken: token, from: sessionURL)
         } catch {
             process = nil
             lastError = error.localizedDescription
@@ -58,11 +83,15 @@ final class BackendProcess {
         return FileManager.default.isExecutableFile(atPath: executable.path) ? executable : nil
     }
 
-    private func startBundledBackend(at executable: URL) -> Bool {
+    private func startBundledBackend(at executable: URL, token: String, sessionURL: URL) -> Bool {
         let task = Process()
         task.currentDirectoryURL = executable.deletingLastPathComponent()
         task.executableURL = executable
-        task.environment = ProcessInfo.processInfo.environment
+        task.environment = ProcessInfo.processInfo.environment.merging([
+            "TIDYDROP_PORT": "0",
+            "TIDYDROP_SESSION_TOKEN": token,
+            "TIDYDROP_SESSION_FILE": sessionURL.path
+        ]) { _, new in new }
         configureLogs(for: task)
 
         do {
@@ -74,6 +103,29 @@ final class BackendProcess {
             lastError = "Bundled backend could not start: \(error.localizedDescription)"
             return false
         }
+    }
+
+    private func loadSession(expectedToken: String, from url: URL) -> Bool {
+        struct Session: Decodable {
+            let port: Int
+            let token: String
+        }
+
+        for _ in 0..<100 {
+            if let data = try? Data(contentsOf: url),
+               let session = try? JSONDecoder().decode(Session.self, from: data),
+               session.token == expectedToken,
+               let url = URL(string: "http://127.0.0.1:\(session.port)") {
+                baseURL = url
+                sessionToken = session.token
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.03)
+        }
+        process?.terminate()
+        process = nil
+        lastError = "Backend did not publish a valid private session."
+        return false
     }
 
     private func configureLogs(for task: Process) {
@@ -93,5 +145,11 @@ final class BackendProcess {
     func stop() {
         process?.terminate()
         process = nil
+        if let sessionFileURL {
+            try? FileManager.default.removeItem(at: sessionFileURL)
+        }
+        sessionFileURL = nil
+        baseURL = nil
+        sessionToken = nil
     }
 }

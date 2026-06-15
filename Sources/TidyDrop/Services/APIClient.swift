@@ -15,7 +15,16 @@ enum APIError: Error, LocalizedError {
 }
 
 struct APIClient {
-    var baseURL = URL(string: "http://127.0.0.1:3838")!
+    var baseURL: URL
+    var sessionToken: String
+
+    init(
+        baseURL: URL = URL(string: "http://127.0.0.1:0")!,
+        sessionToken: String = ""
+    ) {
+        self.baseURL = baseURL
+        self.sessionToken = sessionToken
+    }
 
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
@@ -53,6 +62,7 @@ struct APIClient {
     }
 
     func classify(
+        scanID: String,
         files: [FileItem],
         categories: [Category],
         settings: AppSettings,
@@ -64,7 +74,8 @@ struct APIClient {
         let response: ClassifyResponse = try await post(
             "/api/classify",
             body: ClassifyRequest(
-                files: files,
+                scanID: scanID,
+                fileIDs: files.map(\.id),
                 categories: categories,
                 settings: ClassifySettings(
                     textModel: textModel,
@@ -81,6 +92,7 @@ struct APIClient {
     }
 
     func classify(
+        scanID: String,
         file: FileItem,
         categories: [Category],
         settings: AppSettings,
@@ -88,6 +100,7 @@ struct APIClient {
         confidenceThreshold: Double
     ) async throws -> ClassificationResult {
         guard let result = try await classify(
+            scanID: scanID,
             files: [file],
             categories: categories,
             settings: settings,
@@ -100,12 +113,16 @@ struct APIClient {
         return result
     }
 
-    func discoverCategories(files: [FileItem], categories: [Category], settings: AppSettings) async throws -> DiscoverCategoriesResponse {
+    func discoverCategories(
+        scanID: String,
+        categories: [Category],
+        settings: AppSettings
+    ) async throws -> DiscoverCategoriesResponse {
         let fallback = categories.first { $0.name.localizedCaseInsensitiveContains("review") }?.id ?? categories.last?.id ?? "review"
         return try await post(
             "/api/categories/discover",
-            body: ClassifyRequest(
-                files: files,
+            body: DiscoverCategoriesRequest(
+                scanID: scanID,
                 categories: categories,
                 settings: ClassifySettings(
                     textModel: settings.expertTextModel,
@@ -121,8 +138,7 @@ struct APIClient {
     }
 
     func plan(
-        sourceFolder: String,
-        files: [FileItem],
+        scanID: String,
         categories: [Category],
         results: [ClassificationResult],
         settings: AppSettings
@@ -130,8 +146,7 @@ struct APIClient {
         try await post(
             "/api/plan",
             body: PlanRequest(
-                sourceFolder: sourceFolder,
-                files: files,
+                scanID: scanID,
                 categories: categories,
                 results: results,
                 settings: PlanSettingsPayload(
@@ -145,7 +160,18 @@ struct APIClient {
     }
 
     func apply(plan: OperationPlan) async throws -> OperationPlan {
-        let response: ApplyResponse = try await post("/api/apply", body: ApplyRequest(plan: plan))
+        let edits = plan.operations.map {
+            OperationEdit(
+                operationID: $0.id,
+                enabled: $0.enabled,
+                categoryID: $0.categoryID,
+                suggestedFilename: $0.suggestedFilename
+            )
+        }
+        let response: ApplyResponse = try await post(
+            "/api/apply",
+            body: ApplyRequest(planID: plan.planID, edits: edits)
+        )
         return response.run
     }
 
@@ -162,10 +188,6 @@ struct APIClient {
         try await post("/api/undo/apply", body: RunIDRequest(runID: runID))
     }
 
-    func openFolder(_ path: String) async throws {
-        let _: OpenFolderResponse = try await post("/api/open-folder", body: OpenFolderRequest(folderPath: path))
-    }
-
     func unloadOllamaModels(_ models: [String]) async {
         for model in Set(models.filter { !$0.isEmpty }) {
             guard let url = URL(string: "http://127.0.0.1:11434/api/generate") else { continue }
@@ -179,7 +201,9 @@ struct APIClient {
     }
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let (data, response) = try await URLSession.shared.data(from: baseURL.appending(path: path))
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(T.self, from: data)
     }
@@ -189,6 +213,7 @@ struct APIClient {
         request.httpMethod = "POST"
         request.timeoutInterval = 660
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try encoder.encode(body)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
@@ -241,9 +266,27 @@ private struct ScanRequest: Codable {
 }
 
 private struct ClassifyRequest: Codable {
-    var files: [FileItem]
+    var scanID: String
+    var fileIDs: [String]
     var categories: [Category]
     var settings: ClassifySettings
+
+    enum CodingKeys: String, CodingKey {
+        case categories, settings
+        case scanID = "scan_id"
+        case fileIDs = "file_ids"
+    }
+}
+
+private struct DiscoverCategoriesRequest: Codable {
+    var scanID: String
+    var categories: [Category]
+    var settings: ClassifySettings
+
+    enum CodingKeys: String, CodingKey {
+        case categories, settings
+        case scanID = "scan_id"
+    }
 }
 
 private struct ClassifySettings: Codable {
@@ -283,15 +326,14 @@ struct DiscoverCategoriesResponse: Codable {
 }
 
 private struct PlanRequest: Codable {
-    var sourceFolder: String
-    var files: [FileItem]
+    var scanID: String
     var categories: [Category]
     var results: [ClassificationResult]
     var settings: PlanSettingsPayload
 
     enum CodingKeys: String, CodingKey {
-        case files, categories, results, settings
-        case sourceFolder = "source_folder"
+        case categories, results, settings
+        case scanID = "scan_id"
     }
 }
 
@@ -310,7 +352,27 @@ private struct PlanSettingsPayload: Codable {
 }
 
 private struct ApplyRequest: Codable {
-    var plan: OperationPlan
+    var planID: String
+    var edits: [OperationEdit]
+
+    enum CodingKeys: String, CodingKey {
+        case edits
+        case planID = "plan_id"
+    }
+}
+
+private struct OperationEdit: Codable {
+    var operationID: String
+    var enabled: Bool
+    var categoryID: String
+    var suggestedFilename: String?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case operationID = "operation_id"
+        case categoryID = "category_id"
+        case suggestedFilename = "suggested_filename"
+    }
 }
 
 private struct ApplyResponse: Codable {
@@ -327,16 +389,4 @@ private struct RunIDRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case runID = "run_id"
     }
-}
-
-private struct OpenFolderRequest: Codable {
-    var folderPath: String
-
-    enum CodingKeys: String, CodingKey {
-        case folderPath = "folder_path"
-    }
-}
-
-private struct OpenFolderResponse: Codable {
-    var ok: Bool
 }

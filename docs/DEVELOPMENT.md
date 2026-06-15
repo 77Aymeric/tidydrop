@@ -10,10 +10,7 @@
 ## Setup
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+uv sync --locked --extra dev
 swift build
 ```
 
@@ -33,28 +30,27 @@ Useful modes:
 ./script/build_and_run.sh --debug
 ```
 
-The Codex Run action is configured in `.codex/environments/environment.toml`.
-
 ## Checks
 
 ```bash
 swift build
-python -m ruff check backend tests
-python -m pytest
+swift test
+uv run ruff check backend tests
+uv run pytest
 ```
 
-Backend tests cover file detection, bounded extraction, JSON recovery, category fallback, confidence handling, conflict-safe paths, copy/move behavior, history, and undo.
+Backend tests cover authentication, trusted scan sessions, API round trips, bounded and isolated extraction, corrupt inputs, JSON recovery, category fallback, confidence handling, conflict-safe paths, server-stored plans, copy/move behavior, history path traversal, and undo. Swift tests verify the JSON contract used by the native client.
 
 ## Local Backend
 
-The app normally owns backend startup. For direct API development:
+The app normally owns backend startup. For direct API development, choose a development-only token explicitly:
 
 ```bash
-source .venv/bin/activate
-uvicorn backend.main:app --host 127.0.0.1 --port 3838 --reload
+TIDYDROP_SESSION_TOKEN=local-development-only \
+uv run uvicorn backend.main:app --host 127.0.0.1 --port 3838 --reload
 ```
 
-Then open `http://127.0.0.1:3838/docs`.
+Requests, including OpenAPI, require `Authorization: Bearer local-development-only`. The packaged app instead chooses a random port and random token automatically.
 
 ## Ollama
 

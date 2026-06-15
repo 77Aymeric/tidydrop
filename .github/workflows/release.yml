@@ -6,7 +6,7 @@ on:
       version:
         description: Release version without the v prefix
         required: true
-        default: 0.1.0-alpha.1
+        default: 0.1.0-alpha.2
 
 permissions:
   contents: write
@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Resolve version
         id: version
@@ -31,16 +31,17 @@ jobs:
           fi
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: "3.12"
-          cache: pip
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
 
       - name: Install backend and release dependencies
         run: |
-          python -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install -e ".[dev,release]"
+          uv sync --locked --extra dev --extra release
 
       - name: Import Developer ID certificate
         env:
@@ -105,6 +106,7 @@ jobs:
             dist/release/TidyDrop-"$VERSION"-macos-arm64.zip \
             dist/release/TidyDrop-"$VERSION"-macos-arm64.dmg \
             dist/release/SHA256SUMS.txt \
+            dist/release/SBOM.cdx.json \
             --title "TidyDrop $TAG" \
             --generate-notes \
             --prerelease

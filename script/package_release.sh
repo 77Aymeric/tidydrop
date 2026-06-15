@@ -20,6 +20,7 @@ ZIP_PATH="$ARTIFACT_DIR/$APP_NAME-$VERSION-macos-$ARCH.zip"
 DMG_PATH="$ARTIFACT_DIR/$APP_NAME-$VERSION-macos-$ARCH.dmg"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+ALLOW_UNSIGNED_RELEASE="${ALLOW_UNSIGNED_RELEASE:-0}"
 
 cd "$ROOT_DIR"
 
@@ -28,8 +29,19 @@ if [[ ! -x .venv/bin/python ]]; then
   exit 1
 fi
 
-if ! .venv/bin/python -c "import PyInstaller" >/dev/null 2>&1; then
-  .venv/bin/python -m pip install -e ".[release]"
+if [[ -z "$SIGN_IDENTITY" && "$ALLOW_UNSIGNED_RELEASE" != "1" ]]; then
+  echo "Refusing to create release artifacts without SIGN_IDENTITY." >&2
+  echo "Use ALLOW_UNSIGNED_RELEASE=1 only for local or CI smoke tests." >&2
+  exit 1
+fi
+if [[ -n "$SIGN_IDENTITY" && -z "$NOTARY_PROFILE" && "$ALLOW_UNSIGNED_RELEASE" != "1" ]]; then
+  echo "Refusing a public signed build without NOTARY_PROFILE." >&2
+  exit 1
+fi
+
+if ! .venv/bin/python -c "import PyInstaller, cyclonedx" >/dev/null 2>&1; then
+  echo "Release dependencies are missing. Run: uv sync --locked --extra release" >&2
+  exit 1
 fi
 
 rm -rf "$BUILD_DIR" "$BACKEND_DIST" "$ARTIFACT_DIR"
@@ -118,7 +130,7 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
   sign_bundle "$SIGN_IDENTITY"
 else
   codesign --force --deep --sign - "$APP_BUNDLE"
-  echo "Built with an ad hoc signature. Set SIGN_IDENTITY for public distribution."
+  echo "Built with an ad hoc signature for an explicit local/CI smoke test."
 fi
 
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
@@ -158,7 +170,13 @@ fi
 
 (
   cd "$ARTIFACT_DIR"
-  shasum -a 256 "$(basename "$ZIP_PATH")" "$(basename "$DMG_PATH")" > SHA256SUMS.txt
+  "$ROOT_DIR/.venv/bin/cyclonedx-py" environment \
+    "$ROOT_DIR/.venv/bin/python" \
+    --pyproject "$ROOT_DIR/pyproject.toml" \
+    --output-reproducible \
+    --of JSON \
+    -o SBOM.cdx.json
+  shasum -a 256 "$(basename "$ZIP_PATH")" "$(basename "$DMG_PATH")" SBOM.cdx.json > SHA256SUMS.txt
 )
 
 echo
@@ -166,3 +184,4 @@ echo "Release artifacts:"
 echo "  $ZIP_PATH"
 echo "  $DMG_PATH"
 echo "  $ARTIFACT_DIR/SHA256SUMS.txt"
+echo "  $ARTIFACT_DIR/SBOM.cdx.json"

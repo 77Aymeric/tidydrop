@@ -10,7 +10,7 @@ graph TD
     App --> Store["AppStore<br/>workflow state"]
     Store --> Client["APIClient"]
     Store --> Process["BackendProcess"]
-    Process --> API["FastAPI<br/>127.0.0.1:3838"]
+    Process --> API["FastAPI<br/>random 127.0.0.1 port<br/>per-launch bearer token"]
     Client --> API
     API --> Scanner["Scanner and extractors"]
     API --> OllamaClient["Ollama client"]
@@ -45,7 +45,11 @@ Source: `backend`
 | Module | Responsibility |
 | --- | --- |
 | `main.py` | FastAPI route boundary |
+| `security.py` | Session authentication, identifier validation, path containment |
+| `state.py` | Trusted in-memory scan sessions |
+| `server.py` | Random loopback port and private runtime-session handoff |
 | `scanner.py` | Traversal, exclusions, kind detection, symlink checks |
+| `extract_worker.py` | Time- and memory-limited complex parser process |
 | `extractors/` | Bounded read-only file understanding |
 | `ollama_client.py` | Health, model list, prompts, schemas, generation |
 | `classifier.py` | Category validation, confidence fallback, filename normalization |
@@ -61,8 +65,9 @@ flowchart LR
     A["Untrusted user files"] -->|"read-only bounded extractors"| B["Typed FileItem"]
     B -->|"local prompt"| C["Untrusted model output"]
     C -->|"schema + semantic validation"| D["ClassificationResult"]
-    D -->|"explicit planner"| E["OperationPlan"]
-    E -->|"human review + Apply"| F["Filesystem operation"]
+    D -->|"explicit planner"| E["Server-stored OperationPlan"]
+    E -->|"human review sends controlled edits"| F["Server recomputes validated targets"]
+    F -->|"exclusive no-overwrite create"| G["Filesystem operation"]
 ```
 
 User files and model output are both treated as untrusted. Only validated typed data can reach the planner, and only an explicit plan can reach apply.
@@ -76,6 +81,8 @@ TidyDrop writes application state under the user's home directory:
 ├── config.json
 ├── logs/
 │   └── backend.log
+├── plans/
+│   └── <plan_id>.json
 ├── runs/
 │   └── <run_id>.json
 └── undone/
@@ -86,7 +93,7 @@ The selected output folder contains the organized copies or moved originals. By 
 
 ## Process Lifecycle
 
-The packaged SwiftUI app starts the local Python backend when needed, polls `/api/health`, and reports startup failures with the backend log path. The backend binds to loopback only.
+The packaged SwiftUI app creates a random session token, starts the local Python backend on an operating-system-selected loopback port, reads the private session handoff, and polls authenticated `/api/health`. The backend binds to loopback only and removes the handoff file at exit.
 
 Ollama is a separate local service. TidyDrop can scan and preview while Ollama is unavailable, but cannot classify.
 

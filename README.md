@@ -18,11 +18,11 @@ It is not a cloud organizer, an automatic cleaner, or a deletion tool.
 
 ## Download
 
-The current public build is **TidyDrop v0.1.0-alpha.1** for Apple Silicon Macs running macOS 26 or later.
+The current public build is **TidyDrop v0.1.0-alpha.2** for Apple Silicon Macs running macOS 26 or later.
 
-[**Download the signed and notarized DMG**](https://github.com/77Aymeric/tidydrop/releases/download/v0.1.0-alpha.1/TidyDrop-0.1.0-alpha.1-macos-arm64.dmg)
+[**Download the signed and notarized DMG**](https://github.com/77Aymeric/tidydrop/releases/download/v0.1.0-alpha.2/TidyDrop-0.1.0-alpha.2-macos-arm64.dmg)
 
-The app is signed and notarized by Apple, and includes its local backend. Ollama and its models remain separate so TidyDrop never downloads multi-gigabyte models without permission. A ZIP archive and SHA-256 checksums are also available on the [release page](https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.1).
+The app is signed and notarized by Apple, and includes its local backend. Ollama and its models remain separate so TidyDrop never downloads multi-gigabyte models without permission. A ZIP archive, SHA-256 checksums, and a CycloneDX SBOM are also available on the [release page](https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.2).
 
 ## Why TidyDrop
 
@@ -41,7 +41,9 @@ Files such as `brief.pdf`, `logo.png`, `meeting-notes.md`, and `invoice.xlsx` ca
 | Preview first | Apply is impossible until an explicit operation plan exists |
 | Undo enabled | Copy and move runs both have reversible workflows |
 | Bounded extraction | Large files and complex formats are sampled, not fully ingested |
+| Isolated complex parsing | PDF, DOCX, XLSX, and archive parsing runs in a time- and memory-limited worker |
 | No execution | Discovered scripts, binaries, and documents are never run |
+| Authenticated local engine | The app uses a private per-launch token and a random loopback port |
 
 Invalid model output, invented categories, low confidence, and request failures are treated as review cases rather than trusted decisions.
 
@@ -198,7 +200,7 @@ Python and Xcode are **not** required when installing the release.
 
 ### Installation
 
-1. Download [`TidyDrop-0.1.0-alpha.1-macos-arm64.dmg`](https://github.com/77Aymeric/tidydrop/releases/download/v0.1.0-alpha.1/TidyDrop-0.1.0-alpha.1-macos-arm64.dmg).
+1. Download [`TidyDrop-0.1.0-alpha.2-macos-arm64.dmg`](https://github.com/77Aymeric/tidydrop/releases/download/v0.1.0-alpha.2/TidyDrop-0.1.0-alpha.2-macos-arm64.dmg).
 2. Open the DMG and drag TidyDrop into `Applications`.
 3. Install Ollama, then start it:
 
@@ -248,7 +250,7 @@ python -m pip install -e ".[dev]"
 ./script/build_and_run.sh
 ```
 
-The script builds `dist/TidyDrop.app`, opens the native app, and lets the app manage its local backend on `127.0.0.1:3838`. There is no browser UI.
+The script builds `dist/TidyDrop.app`, opens the native app, and lets it manage an authenticated backend on a random `127.0.0.1` port. There is no browser UI.
 
 ## Sorting Templates
 
@@ -274,7 +276,7 @@ French category examples:
 
 ```mermaid
 graph TD
-    UI["Native SwiftUI app<br/>Sources/TidyDrop"] -->|"HTTP on 127.0.0.1:3838"| BE["FastAPI local engine<br/>backend/"]
+    UI["Native SwiftUI app<br/>Sources/TidyDrop"] -->|"Bearer-authenticated HTTP<br/>random 127.0.0.1 port"| BE["FastAPI local engine<br/>backend/"]
     BE --> SCAN["Scanner and extractors"]
     BE --> AI["Ollama client<br/>localhost:11434"]
     BE --> PLAN["Planner and safe operations"]
@@ -289,7 +291,7 @@ See [Architecture](docs/ARCHITECTURE.md) and [Workflow](docs/WORKFLOW.md) for th
 
 ## Local API
 
-The backend binds only to `127.0.0.1:3838`.
+The backend binds only to `127.0.0.1` on a random port. At every launch, the native app creates a private bearer token and passes it to the backend. A mode-`0600` session file communicates the selected port to the app and is removed when the process exits.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
@@ -304,9 +306,8 @@ The backend binds only to `127.0.0.1:3838`.
 | `GET` | `/api/history/{run_id}` | Read a run |
 | `POST` | `/api/undo/preview` | Preview reversal |
 | `POST` | `/api/undo/apply` | Apply reversal |
-| `POST` | `/api/open-folder` | Open a local folder in Finder |
 
-See [Local API](docs/API.md) for request behavior.
+Scan results and operation plans are retained server-side. Later requests reference opaque `scan_id` and `plan_id` values; Apply accepts only controlled review edits and recomputes every filesystem target from trusted server state. See [Local API](docs/API.md) for request behavior.
 
 ## Prompts and AI Contract
 
@@ -325,13 +326,15 @@ Important runtime constraints:
 ## Development
 
 ```bash
+uv sync --locked --extra dev
 swift build
-python -m pytest
-python -m ruff check backend tests
+swift test
+uv run pytest
+uv run ruff check backend tests
 ./script/build_and_run.sh --verify
 ```
 
-CI runs backend lint/tests on Linux and builds the native SwiftUI app on macOS 26.
+CI runs backend lint/tests on Linux, Swift contract tests on macOS 26, and a complete unsigned packaging smoke test that verifies the app bundle, DMG, ZIP, checksums, and SBOM.
 
 ```text
 Sources/TidyDrop/       Native macOS product
@@ -362,7 +365,7 @@ docs/                   Architecture and product documentation
 
 TidyDrop is an alpha-stage open-source project. The native scan/classify/plan/apply workflow, semantic folder discovery, reviewed renaming, file preview, history, cancellation, and undo are implemented.
 
-The first public Apple Silicon build, [`v0.1.0-alpha.1`](https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.1), is signed, hardened, notarized by Apple, and available as a DMG or ZIP. Current alpha limitations include metadata-only understanding for audio/video and many archive formats, model-dependent classification quality, and limited end-to-end UI automation.
+The latest Apple Silicon build, [`v0.1.0-alpha.2`](https://github.com/77Aymeric/tidydrop/releases/tag/v0.1.0-alpha.2), is signed, hardened, notarized by Apple, and available as a DMG or ZIP. Current alpha limitations include metadata-only understanding for audio/video and many archive formats, model-dependent classification quality, and limited end-to-end UI automation.
 
 ## License
 

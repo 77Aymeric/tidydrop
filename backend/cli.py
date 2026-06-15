@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import uvicorn
-
-from backend.config import HOST, PORT
+from backend.main import app
+from backend.server import run_server
 
 
 def main() -> None:
-    uvicorn.run("backend.main:app", host=HOST, port=PORT, reload=False)
+    run_server(app, access_log=True)

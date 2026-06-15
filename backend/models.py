@@ -72,6 +72,7 @@ class ScanSummary(BaseModel):
 
 
 class ScanResponse(BaseModel):
+    scan_id: str
     files: list[FileItem]
     summary: ScanSummary
 
@@ -90,7 +91,8 @@ class ClassificationSettings(BaseModel):
 
 
 class ClassifyRequest(BaseModel):
-    files: list[FileItem]
+    scan_id: str
+    file_ids: list[str]
     categories: list[Category]
     settings: ClassificationSettings = Field(default_factory=ClassificationSettings)
 
@@ -111,7 +113,7 @@ class ClassifyResponse(BaseModel):
 
 
 class DiscoverCategoriesRequest(BaseModel):
-    files: list[FileItem]
+    scan_id: str
     categories: list[Category]
     settings: ClassificationSettings = Field(default_factory=ClassificationSettings)
 
@@ -129,8 +131,7 @@ class PlanSettings(BaseModel):
 
 
 class PlanRequest(BaseModel):
-    source_folder: str
-    files: list[FileItem]
+    scan_id: str
     categories: list[Category]
     results: list[ClassificationResult]
     settings: PlanSettings
@@ -159,6 +160,7 @@ class OperationEntry(BaseModel):
 
 
 class OperationPlan(BaseModel):
+    plan_id: str
     run_id: str
     created_at: str
     source_folder: str
@@ -167,8 +169,16 @@ class OperationPlan(BaseModel):
     operations: list[OperationEntry]
 
 
+class OperationEdit(BaseModel):
+    operation_id: str
+    enabled: bool = True
+    category_id: str
+    suggested_filename: str | None = None
+
+
 class ApplyRequest(BaseModel):
-    plan: OperationPlan
+    plan_id: str
+    edits: list[OperationEdit]
 
 
 class ApplyResponse(BaseModel):
@@ -207,13 +217,10 @@ class UndoApplyRequest(BaseModel):
     run_id: str
 
 
-class OpenFolderRequest(BaseModel):
-    folder_path: str
-
-
 def utc_now_id() -> tuple[str, str]:
     now = datetime.now().astimezone()
-    return now.strftime("%Y-%m-%d_%H-%M-%S"), now.isoformat(timespec="seconds")
+    suffix = uuid4().hex[:10]
+    return f"{now.strftime('%Y-%m-%d_%H-%M-%S')}-{suffix}", now.isoformat(timespec="seconds")
 
 
 def path_to_id(path: Path) -> str:

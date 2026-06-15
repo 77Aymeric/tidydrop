@@ -3,13 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from backend.classifier import discover_categories, is_generic_category_name, normalize_result
+from backend.main import app
 from backend.models import (
+    ApplyRequest,
     Category,
     ClassificationResult,
     ClassificationSettings,
     FileItem,
+    OperationEdit,
     PlanRequest,
     PlanSettings,
     ScanRequest,
@@ -20,9 +24,11 @@ from backend.ollama_client import (
     CLASSIFICATION_SCHEMA,
     _load_image_b64,
     build_category_discovery_prompt,
+    stratified_sample,
 )
-from backend.planner import create_plan
-from backend.scanner import detect_kind, scan_folder
+from backend.planner import create_plan, sanitize_filename
+from backend.scanner import _extract_safely, detect_kind, scan_folder
+from backend.state import register_scan
 from backend.undo import apply_undo, preview_undo
 
 
@@ -35,6 +41,32 @@ def item(path: Path) -> FileItem:
         last_modified="2026-06-06T00:00:00+02:00",
         file_kind=detect_kind(path),
     )
+
+
+def configure_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
+    app_dir = tmp_path / "home"
+    runs_dir = app_dir / "runs"
+    plans_dir = app_dir / "plans"
+    undone_dir = app_dir / "undone"
+    monkeypatch.setattr("backend.config.RUNS_DIR", runs_dir)
+    monkeypatch.setattr("backend.config.PLANS_DIR", plans_dir)
+    monkeypatch.setattr("backend.config.UNDONE_DIR", undone_dir)
+    monkeypatch.setattr("backend.history.RUNS_DIR", runs_dir)
+    monkeypatch.setattr("backend.planner.PLANS_DIR", plans_dir)
+    monkeypatch.setattr("backend.undo.UNDONE_DIR", undone_dir)
+    return runs_dir, plans_dir, undone_dir
+
+
+def plan_edits(plan) -> list[OperationEdit]:
+    return [
+        OperationEdit(
+            operation_id=operation.id,
+            enabled=operation.enabled,
+            category_id=operation.category_id,
+            suggested_filename=operation.suggested_filename,
+        )
+        for operation in plan.operations
+    ]
 
 
 def test_detect_kind_and_scan_defaults(tmp_path: Path) -> None:
@@ -265,20 +297,15 @@ async def test_ai_category_discovery_adds_categories_before_classification(tmp_p
 
 
 def test_plan_apply_history_and_move_undo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    app_dir = tmp_path / "home"
-    runs_dir = app_dir / "runs"
-    undone_dir = app_dir / "undone"
-    monkeypatch.setattr("backend.config.RUNS_DIR", runs_dir)
-    monkeypatch.setattr("backend.config.UNDONE_DIR", undone_dir)
-    monkeypatch.setattr("backend.history.RUNS_DIR", runs_dir)
-    monkeypatch.setattr("backend.undo.UNDONE_DIR", undone_dir)
+    configure_storage(tmp_path, monkeypatch)
 
     source = tmp_path / "source"
     output = tmp_path / "sorted"
     source.mkdir()
     original = source / "report.txt"
     original.write_text("school report", encoding="utf-8")
-    file = item(original)
+    scan = register_scan(source, scan_folder(ScanRequest(folder_path=str(source))))
+    file = scan.files[0]
     categories = [Category(id="docs", name="Documents"), Category(id="review", name="To Review")]
     results = [
         ClassificationResult(
@@ -291,15 +318,14 @@ def test_plan_apply_history_and_move_undo(tmp_path: Path, monkeypatch: pytest.Mo
     ]
     plan = create_plan(
         PlanRequest(
-            source_folder=str(source),
-            files=[file],
+            scan_id=scan.scan_id,
             categories=categories,
             results=results,
             settings=PlanSettings(mode="move", output_folder=str(output)),
         )
     )
 
-    applied = apply_plan(plan)
+    applied = apply_plan(ApplyRequest(plan_id=plan.plan_id, edits=plan_edits(plan)))
     assert applied.operations[0].status == "done"
     assert not original.exists()
     assert Path(applied.operations[0].actual_path or "").exists()
@@ -311,18 +337,21 @@ def test_plan_apply_history_and_move_undo(tmp_path: Path, monkeypatch: pytest.Mo
     assert original.exists()
 
 
-def test_plan_applies_reviewed_name_and_preserves_extension(tmp_path: Path) -> None:
+def test_plan_applies_reviewed_name_and_preserves_extension(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure_storage(tmp_path, monkeypatch)
     source = tmp_path / "source"
     output = tmp_path / "sorted"
     source.mkdir()
     original = source / "draft.md"
     original.write_text("Project Alpha launch notes", encoding="utf-8")
-    file = item(original)
+    scan = register_scan(source, scan_folder(ScanRequest(folder_path=str(source))))
+    file = scan.files[0]
 
     plan = create_plan(
         PlanRequest(
-            source_folder=str(source),
-            files=[file],
+            scan_id=scan.scan_id,
             categories=[Category(id="alpha", name="Project Alpha")],
             results=[
                 ClassificationResult(
@@ -348,20 +377,15 @@ def test_plan_applies_reviewed_name_and_preserves_extension(tmp_path: Path) -> N
 
 
 def test_copy_undo_moves_copy_to_holding_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    app_dir = tmp_path / "home"
-    runs_dir = app_dir / "runs"
-    undone_dir = app_dir / "undone"
-    monkeypatch.setattr("backend.config.RUNS_DIR", runs_dir)
-    monkeypatch.setattr("backend.config.UNDONE_DIR", undone_dir)
-    monkeypatch.setattr("backend.history.RUNS_DIR", runs_dir)
-    monkeypatch.setattr("backend.undo.UNDONE_DIR", undone_dir)
+    _, _, undone_dir = configure_storage(tmp_path, monkeypatch)
 
     source = tmp_path / "source"
     output = tmp_path / "sorted"
     source.mkdir()
     original = source / "report.txt"
     original.write_text("school report", encoding="utf-8")
-    file = item(original)
+    scan = register_scan(source, scan_folder(ScanRequest(folder_path=str(source))))
+    file = scan.files[0]
     categories = [Category(id="docs", name="Documents")]
     results = [
         ClassificationResult(
@@ -374,14 +398,13 @@ def test_copy_undo_moves_copy_to_holding_folder(tmp_path: Path, monkeypatch: pyt
     ]
     plan = create_plan(
         PlanRequest(
-            source_folder=str(source),
-            files=[file],
+            scan_id=scan.scan_id,
             categories=categories,
             results=results,
             settings=PlanSettings(mode="copy", output_folder=str(output)),
         )
     )
-    applied = apply_plan(plan)
+    applied = apply_plan(ApplyRequest(plan_id=plan.plan_id, edits=plan_edits(plan)))
     copied = Path(applied.operations[0].actual_path or "")
 
     undone = apply_undo(applied.run_id)
@@ -390,3 +413,272 @@ def test_copy_undo_moves_copy_to_holding_folder(tmp_path: Path, monkeypatch: pyt
     assert not copied.exists()
     assert undone.actions[0].status == "done"
     assert (undone_dir / applied.run_id / "report.txt").exists()
+
+
+def test_run_ids_are_unique_within_same_second() -> None:
+    from backend.models import utc_now_id
+
+    first, _ = utc_now_id()
+    second, _ = utc_now_id()
+    assert first != second
+
+
+def test_filename_sanitization_removes_controls_and_bidi() -> None:
+    assert sanitize_filename("  report\u202e\n/2026.pdf  ", "fallback.pdf") == "report-2026.pdf"
+    assert sanitize_filename("..\u200b", "fallback.txt") == "fallback.txt"
+
+
+def test_stratified_discovery_sample_covers_multiple_groups(tmp_path: Path) -> None:
+    files: list[FileItem] = []
+    for folder_name, kind_suffix in (("alpha", ".md"), ("beta", ".png"), ("gamma", ".csv")):
+        folder = tmp_path / folder_name
+        folder.mkdir()
+        for index in range(100):
+            path = folder / f"{index:03d}{kind_suffix}"
+            path.write_bytes(b"x")
+            files.append(item(path))
+    sampled = stratified_sample(files, tmp_path, limit=30)
+    assert {Path(file.path).parent.name for file in sampled} == {"alpha", "beta", "gamma"}
+
+
+def test_plan_previews_duplicate_targets_as_conflicts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure_storage(tmp_path, monkeypatch)
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    (source / "one.txt").write_text("one", encoding="utf-8")
+    (source / "two.txt").write_text("two", encoding="utf-8")
+    scan = register_scan(source, scan_folder(ScanRequest(folder_path=str(source))))
+    category = Category(id="project", name="Project")
+    results = [
+        ClassificationResult(
+            file_id=file.id,
+            original_path=file.path,
+            suggested_category_id="project",
+            confidence=0.9,
+            reason="Same project",
+            suggested_filename="shared.txt",
+        )
+        for file in scan.files
+    ]
+    plan = create_plan(
+        PlanRequest(
+            scan_id=scan.scan_id,
+            categories=[category],
+            results=results,
+            settings=PlanSettings(mode="copy", output_folder=str(output), apply_renaming=True),
+        )
+    )
+    assert plan.operations[0].target_path != plan.operations[1].target_path
+    assert plan.operations[1].conflict is not None
+    assert plan.operations[1].conflict.type == "duplicate_in_plan"
+
+
+def test_api_requires_private_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TIDYDROP_SESSION_TOKEN", "test-secret")
+    client = TestClient(app)
+    assert client.get("/api/health").status_code == 401
+    assert client.get("/api/health", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.get("/api/health", headers={"Authorization": "Bearer test-secret"}).status_code == 200
+
+
+def test_api_rejects_forged_apply_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    configure_storage(tmp_path, monkeypatch)
+    monkeypatch.setenv("TIDYDROP_SESSION_TOKEN", "test-secret")
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    (source / "safe.txt").write_text("safe", encoding="utf-8")
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer test-secret"}
+    scan_response = client.post(
+        "/api/scan",
+        headers=headers,
+        json={"folder_path": str(source)},
+    )
+    assert scan_response.status_code == 200
+    scan_data = scan_response.json()
+    file_data = scan_data["files"][0]
+    plan_response = client.post(
+        "/api/plan",
+        headers=headers,
+        json={
+            "scan_id": scan_data["scan_id"],
+            "categories": [{"id": "project", "name": "Project"}],
+            "results": [
+                {
+                    "file_id": file_data["id"],
+                    "original_path": "/etc/passwd",
+                    "suggested_category_id": "project",
+                    "confidence": 0.9,
+                    "reason": "test",
+                }
+            ],
+            "settings": {"mode": "copy", "output_folder": str(output)},
+        },
+    )
+    assert plan_response.status_code == 200
+    plan = plan_response.json()
+    assert plan["operations"][0]["original_path"] == str(source / "safe.txt")
+
+    forged = client.post(
+        "/api/apply",
+        headers=headers,
+        json={
+            "plan_id": plan["plan_id"],
+            "edits": [
+                {
+                    "operation_id": "forged-operation",
+                    "enabled": True,
+                    "category_id": "project",
+                    "suggested_filename": "../../outside.txt",
+                }
+            ],
+        },
+    )
+    assert forged.status_code == 400
+    assert not (tmp_path / "outside.txt").exists()
+
+
+def test_history_rejects_path_traversal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    configure_storage(tmp_path, monkeypatch)
+    monkeypatch.setenv("TIDYDROP_SESSION_TOKEN", "test-secret")
+    client = TestClient(app)
+    response = client.get(
+        "/api/history/..%2F..%2Fetc%2Fpasswd",
+        headers={"Authorization": "Bearer test-secret"},
+    )
+    assert response.status_code in {400, 404}
+
+
+def test_corrupt_complex_files_fail_closed(tmp_path: Path) -> None:
+    for name, kind in (
+        ("broken.pdf", "pdf"),
+        ("broken.docx", "docx"),
+        ("broken.xlsx", "spreadsheet"),
+        ("broken.zip", "archive"),
+    ):
+        path = tmp_path / name
+        path.write_bytes(b"not-a-valid-container")
+        preview, metadata, level, image = _extract_safely(path, kind)  # type: ignore[arg-type]
+        assert len(preview) <= 6000
+        assert metadata
+        assert level == "metadata_only"
+        assert image is None
+
+
+def test_complex_extraction_timeout_falls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    path = tmp_path / "slow.pdf"
+    path.write_bytes(b"%PDF")
+
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=8)
+
+    monkeypatch.setattr("backend.scanner.subprocess.run", timeout)
+    preview, metadata, level, _ = _extract_safely(path, "pdf")
+    assert preview == ""
+    assert "timed out" in metadata
+    assert level == "metadata_only"
+
+
+def test_api_scan_classify_plan_apply_history_undo_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configure_storage(tmp_path, monkeypatch)
+    monkeypatch.setenv("TIDYDROP_SESSION_TOKEN", "test-secret")
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    original = source / "draft.txt"
+    original.write_text("Project Atlas launch brief", encoding="utf-8")
+
+    async def fake_classify(files, categories, settings):
+        return [
+            ClassificationResult(
+                file_id=file.id,
+                original_path=file.path,
+                suggested_category_id="atlas",
+                confidence=0.91,
+                reason="Content names Project Atlas.",
+                suggested_filename="project-atlas-launch-brief.txt",
+                should_rename=True,
+            )
+            for file in files
+        ]
+
+    monkeypatch.setattr("backend.main.classify_files", fake_classify)
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer test-secret"}
+
+    scan = client.post("/api/scan", headers=headers, json={"folder_path": str(source)}).json()
+    file_id = scan["files"][0]["id"]
+    classification = client.post(
+        "/api/classify",
+        headers=headers,
+        json={
+            "scan_id": scan["scan_id"],
+            "file_ids": [file_id],
+            "categories": [{"id": "atlas", "name": "Project Atlas"}],
+            "settings": {"text_model": "fake"},
+        },
+    )
+    assert classification.status_code == 200
+    result = classification.json()["results"][0]
+
+    plan_response = client.post(
+        "/api/plan",
+        headers=headers,
+        json={
+            "scan_id": scan["scan_id"],
+            "categories": [{"id": "atlas", "name": "Project Atlas"}],
+            "results": [result],
+            "settings": {
+                "mode": "copy",
+                "output_folder": str(output),
+                "apply_renaming": True,
+            },
+        },
+    )
+    assert plan_response.status_code == 200
+    plan = plan_response.json()
+    operation = plan["operations"][0]
+
+    applied_response = client.post(
+        "/api/apply",
+        headers=headers,
+        json={
+            "plan_id": plan["plan_id"],
+            "edits": [
+                {
+                    "operation_id": operation["id"],
+                    "enabled": True,
+                    "category_id": "atlas",
+                    "suggested_filename": "reviewed-atlas-brief.txt",
+                }
+            ],
+        },
+    )
+    assert applied_response.status_code == 200
+    applied = applied_response.json()["run"]
+    copied = Path(applied["operations"][0]["actual_path"])
+    assert copied.name == "reviewed-atlas-brief.txt"
+    assert copied.exists()
+    assert original.exists()
+
+    history = client.get("/api/history", headers=headers)
+    assert history.status_code == 200
+    assert history.json()["runs"][0]["run_id"] == applied["run_id"]
+
+    undo = client.post(
+        "/api/undo/apply",
+        headers=headers,
+        json={"run_id": applied["run_id"]},
+    )
+    assert undo.status_code == 200
+    assert not copied.exists()

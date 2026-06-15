@@ -57,8 +57,14 @@ struct ScanSummary: Codable, Hashable {
 }
 
 struct ScanResponse: Codable {
+    var scanID: String
     var files: [FileItem]
     var summary: ScanSummary
+
+    enum CodingKeys: String, CodingKey {
+        case files, summary
+        case scanID = "scan_id"
+    }
 }
 
 struct ClassificationResult: Codable, Identifiable, Hashable {
@@ -84,7 +90,8 @@ struct ClassificationResult: Codable, Identifiable, Hashable {
 }
 
 struct OperationPlan: Codable, Identifiable, Hashable {
-    var id: String { runID }
+    var id: String { planID }
+    var planID: String
     var runID: String
     var createdAt: String
     var sourceFolder: String
@@ -94,6 +101,7 @@ struct OperationPlan: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case mode, operations
+        case planID = "plan_id"
         case runID = "run_id"
         case createdAt = "created_at"
         case sourceFolder = "source_folder"

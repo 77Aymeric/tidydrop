@@ -14,6 +14,11 @@ let package = Package(
         .executableTarget(
             name: "TidyDrop",
             path: "Sources/TidyDrop"
+        ),
+        .testTarget(
+            name: "TidyDropTests",
+            dependencies: ["TidyDrop"],
+            path: "Tests/TidyDropTests"
         )
     ]
 )

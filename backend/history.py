@@ -2,15 +2,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from uuid import uuid4
 
 from backend.config import RUNS_DIR, ensure_app_dirs
 from backend.models import OperationPlan
+from backend.security import validate_identifier
 
 
 def save_run(plan: OperationPlan) -> None:
     ensure_app_dirs()
+    validate_identifier(plan.run_id, "run identifier")
     path = RUNS_DIR / f"{plan.run_id}.json"
-    path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    temporary.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(path)
 
 
 def list_runs() -> list[OperationPlan]:
@@ -32,6 +38,7 @@ def load_run(run_id: str) -> OperationPlan:
 
 
 def _run_path(run_id: str) -> Path:
+    validate_identifier(run_id, "run identifier")
     path = RUNS_DIR / f"{run_id}.json"
     if not path.exists():
         raise FileNotFoundError(f"Run {run_id} was not found.")

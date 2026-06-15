@@ -14,6 +14,7 @@ final class AppStore {
     ]
     var settings = AppSettings()
     var files: [FileItem] = []
+    var scanID: String?
     var summary: ScanSummary?
     var results: [ClassificationResult] = []
     var plan: OperationPlan?
@@ -40,7 +41,7 @@ final class AppStore {
     var ollamaMessage = "Not checked yet"
 
     private let backend = BackendProcess()
-    private let api = APIClient()
+    private var api = APIClient()
     private var stopRequested = false
 
     var selectedFile: FileItem? {
@@ -78,6 +79,12 @@ final class AppStore {
             errorMessage = backend.lastError ?? "Backend could not start."
             return
         }
+        guard let baseURL = backend.baseURL, let token = backend.sessionToken else {
+            backendStatus = "Error"
+            errorMessage = "Backend session could not be established."
+            return
+        }
+        api = APIClient(baseURL: baseURL, sessionToken: token)
         await waitForBackend()
         await refreshHistory()
     }
@@ -107,6 +114,9 @@ final class AppStore {
             backendStatus = "Error"
             errorMessage = backend.lastError ?? "Backend could not start."
             return
+        }
+        if let baseURL = backend.baseURL, let token = backend.sessionToken {
+            api = APIClient(baseURL: baseURL, sessionToken: token)
         }
         do {
             let health = try await api.health()
@@ -176,6 +186,7 @@ final class AppStore {
             let response = try await api.scan(folder: folderURL.path, settings: settings)
             try Task.checkCancellation()
             files = response.files
+            scanID = response.scanID
             summary = response.summary
             selectedFileID = response.files.first?.id
             results = []
@@ -191,7 +202,7 @@ final class AppStore {
     }
 
     func classifyAndPlan() async {
-        guard let folderURL else {
+        guard folderURL != nil else {
             errorMessage = "No folder selected. Choose or drop a folder first."
             return
         }
@@ -202,6 +213,10 @@ final class AppStore {
         guard !files.isEmpty else {
             statusMessage = "Scan a folder before classification."
             errorMessage = "No files found. Scan a folder before classification."
+            return
+        }
+        guard let scanID else {
+            errorMessage = "Scan session expired. Scan the folder again."
             return
         }
         guard ollamaRunning else {
@@ -232,7 +247,11 @@ final class AppStore {
             if settings.allowAICategories {
                 statusMessage = "Discovering useful folders"
                 setProgress(title: "Step 1 of \(phaseCount): Folder discovery", detail: "Expert text model · reviewing the full scan", completed: 0, total: files.count + 2)
-                let discovered = try await api.discoverCategories(files: files, categories: classificationCategories, settings: settings)
+                let discovered = try await api.discoverCategories(
+                    scanID: scanID,
+                    categories: classificationCategories,
+                    settings: settings
+                )
                 try Task.checkCancellation()
                 classificationCategories = semanticClassificationCategories(discovered.categories)
                 guard classificationCategories.contains(where: { $0.id != "review" }) else {
@@ -272,6 +291,7 @@ final class AppStore {
                     total: total
                 )
                 let result = try await api.classify(
+                    scanID: scanID,
                     file: file,
                     categories: classificationCategories,
                     settings: settings,
@@ -307,6 +327,7 @@ final class AppStore {
                             total: total
                         )
                         let expertResult = try await api.classify(
+                            scanID: scanID,
                             file: file,
                             categories: classificationCategories,
                             settings: settings,
@@ -339,6 +360,7 @@ final class AppStore {
                             total: total
                         )
                         let expertResult = try await api.classify(
+                            scanID: scanID,
                             file: file,
                             categories: classificationCategories,
                             settings: settings,
@@ -375,8 +397,7 @@ final class AppStore {
                 return
             }
             let nextPlan = try await api.plan(
-                sourceFolder: folderURL.path,
-                files: files,
+                scanID: scanID,
                 categories: classificationCategories,
                 results: nextResults,
                 settings: settings
@@ -442,10 +463,8 @@ final class AppStore {
 
     func openOutputFolder() async {
         guard let path = lastAppliedRun?.outputFolder ?? plan?.outputFolder ?? optionalOutputFolder else { return }
-        await run("Opening output folder", canStop: false) {
-            try await api.openFolder(path)
-            statusMessage = "Opened output folder."
-        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        statusMessage = "Opened output folder."
     }
 
     func stopCurrentWork() {

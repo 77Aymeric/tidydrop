@@ -1,6 +1,6 @@
 [project]
 name = "tidydrop"
-version = "0.1.0"
+version = "0.1.0a2"
 description = "Drop a folder. Let local AI tidy it."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,6 +38,7 @@ dev = [
   "ruff>=0.5",
 ]
 release = [
+  "cyclonedx-bom>=7.1",
   "pyinstaller>=6.14",
 ]
 

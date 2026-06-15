@@ -312,7 +312,7 @@ def build_category_discovery_prompt(
             "summary": file.metadata_summary[:120],
             "content": " ".join(file.content_preview[:220].split()),
         }
-        for file in files[:200]
+        for file in stratified_sample(files, common_root, limit=200)
     ]
     return f"""You are TidyDrop, a local AI file organization assistant.
 
@@ -359,3 +359,31 @@ def _relative_display_path(path: Path, root: Path) -> str:
         return str(path.relative_to(root))
     except ValueError:
         return path.name
+
+
+def stratified_sample(files: list[FileItem], root: Path, limit: int) -> list[FileItem]:
+    if len(files) <= limit:
+        return files
+    buckets: dict[tuple[str, str, str], list[FileItem]] = {}
+    for file in files:
+        path = Path(file.path)
+        relative_parent = _relative_display_path(path.parent, root)
+        month = file.last_modified[:7]
+        buckets.setdefault((relative_parent, file.file_kind, month), []).append(file)
+    for bucket in buckets.values():
+        bucket.sort(key=lambda item: (item.last_modified, item.path))
+
+    sampled: list[FileItem] = []
+    keys = sorted(buckets)
+    while len(sampled) < limit and keys:
+        remaining: list[tuple[str, str, str]] = []
+        for key in keys:
+            bucket = buckets[key]
+            if bucket:
+                sampled.append(bucket.pop(len(bucket) // 2))
+                if len(sampled) >= limit:
+                    break
+            if bucket:
+                remaining.append(key)
+        keys = remaining
+    return sampled

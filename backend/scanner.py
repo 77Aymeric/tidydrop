@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import mimetypes
 import os
+import json
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -43,6 +46,8 @@ CODE_EXTS = {
 ARCHIVE_EXTS = {".zip", ".rar", ".7z", ".tar", ".gz", ".tgz"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+ISOLATED_KINDS = {"pdf", "docx", "spreadsheet", "archive"}
+EXTRACTION_TIMEOUT_SECONDS = 8
 
 
 def detect_kind(path: Path) -> FileKind:
@@ -84,6 +89,39 @@ def _extract(path: Path, kind: FileKind) -> tuple[str, str, str, str | None]:
     if kind in {"audio", "video"}:
         return extract_media(path)
     return extract_generic(path)
+
+
+def _extract_safely(path: Path, kind: FileKind) -> tuple[str, str, str, str | None]:
+    if kind not in ISOLATED_KINDS:
+        return _extract(path, kind)
+    command = (
+        [sys.executable, "--extract", kind, str(path)]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, "-m", "backend.extract_worker", kind, str(path)]
+    )
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=EXTRACTION_TIMEOUT_SECONDS,
+            check=False,
+            env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parent.parent)},
+        )
+    except subprocess.TimeoutExpired:
+        return "", "Deep extraction timed out; metadata only.", "metadata_only", None
+    if completed.returncode != 0:
+        return "", "Deep extraction failed safely; metadata only.", "metadata_only", None
+    try:
+        payload = json.loads(completed.stdout)
+        return (
+            str(payload.get("preview", "")),
+            str(payload.get("metadata", "")),
+            str(payload.get("level", "metadata_only")),
+            payload.get("image_b64"),
+        )
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return "", "Deep extraction returned invalid output; metadata only.", "metadata_only", None
 
 
 def _iter_files(
@@ -141,7 +179,7 @@ def scan_folder(request: ScanRequest) -> ScanResponse:
                 level = "metadata_only"
                 image_b64 = None
             else:
-                preview, metadata, level, image_b64 = _extract(path, kind)
+                preview, metadata, level, image_b64 = _extract_safely(path, kind)
 
             file_item = FileItem(
                 path=str(path),
@@ -161,7 +199,7 @@ def scan_folder(request: ScanRequest) -> ScanResponse:
         except OSError:
             continue
     summary.total_files = len(files)
-    return ScanResponse(files=files, summary=summary)
+    return ScanResponse(scan_id="", files=files, summary=summary)
 
 
 def _count(summary: ScanSummary, kind: FileKind) -> None:

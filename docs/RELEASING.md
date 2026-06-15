@@ -10,6 +10,7 @@ Each release publishes:
 TidyDrop-<version>-macos-arm64.dmg
 TidyDrop-<version>-macos-arm64.zip
 SHA256SUMS.txt
+SBOM.cdx.json
 ```
 
 The app is signed with Developer ID Application, hardened, notarized by Apple, and stapled before publication.
@@ -29,10 +30,10 @@ Never commit these values.
 
 ## Local Packaging
 
-Unsigned local verification:
+Unsigned local/CI verification must be explicitly enabled:
 
 ```bash
-./script/package_release.sh 0.1.0-alpha.1
+ALLOW_UNSIGNED_RELEASE=1 ./script/package_release.sh 0.1.0-alpha.1
 ```
 
 Signed and notarized:
@@ -62,7 +63,8 @@ git push origin v0.1.0-alpha.1
 gh release create v0.1.0-alpha.1 \
   dist/release/TidyDrop-0.1.0-alpha.1-macos-arm64.dmg \
   dist/release/TidyDrop-0.1.0-alpha.1-macos-arm64.zip \
-  dist/release/SHA256SUMS.txt
+  dist/release/SHA256SUMS.txt \
+  dist/release/SBOM.cdx.json
 ```
 
 The Release workflow is currently opt-in and does not run when a tag is pushed. This prevents failed public release jobs until the required Apple secrets are configured in the repository.
@@ -80,3 +82,5 @@ After the secrets above are configured, start the workflow manually from GitHub 
 - stapled notarization tickets;
 - Gatekeeper assessment accepted;
 - DMG, ZIP, and SHA-256 checksums attached.
+
+The dependency graph is locked in `uv.lock`. CI also builds the standalone app, checks its signature structure, verifies every checksum, and publishes a CycloneDX software bill of materials.

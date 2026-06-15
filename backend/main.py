@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import subprocess
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 
 from backend.classifier import classify_files, discover_categories
 from backend.config import OLLAMA_BASE_URL, ensure_app_dirs
@@ -14,7 +14,6 @@ from backend.models import (
     ClassifyResponse,
     DiscoverCategoriesRequest,
     DiscoverCategoriesResponse,
-    OpenFolderRequest,
     PlanRequest,
     ScanRequest,
     UndoApplyRequest,
@@ -24,14 +23,23 @@ from backend.ollama_client import OllamaClient, OllamaUnavailable
 from backend.operations import apply_plan
 from backend.planner import create_plan
 from backend.scanner import scan_folder
+from backend.security import require_session
+from backend.state import load_scan, register_scan
 from backend.undo import apply_undo, preview_undo
 
-app = FastAPI(title="TidyDrop", version="0.1.0")
 
-
-@app.on_event("startup")
-def startup() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     ensure_app_dirs()
+    yield
+
+
+app = FastAPI(
+    title="TidyDrop",
+    version="0.1.0",
+    dependencies=[Depends(require_session)],
+    lifespan=lifespan,
+)
 
 
 @app.get("/api/health")
@@ -59,20 +67,26 @@ async def ollama_models():
 @app.post("/api/scan")
 async def scan(request: ScanRequest):
     try:
-        return scan_folder(request)
+        root = Path(request.folder_path).expanduser().resolve()
+        return register_scan(root, scan_folder(request))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/classify", response_model=ClassifyResponse)
 async def classify(request: ClassifyRequest):
-    return ClassifyResponse(results=await classify_files(request.files, request.categories, request.settings))
+    try:
+        files = load_scan(request.scan_id).files(request.file_ids)
+        return ClassifyResponse(results=await classify_files(files, request.categories, request.settings))
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/categories/discover", response_model=DiscoverCategoriesResponse)
 async def categories_discover(request: DiscoverCategoriesRequest):
     try:
-        categories, added = await discover_categories(request.files, request.categories, request.settings)
+        files = load_scan(request.scan_id).files()
+        categories, added = await discover_categories(files, request.categories, request.settings)
         return DiscoverCategoriesResponse(categories=categories, added_categories=added)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Folder discovery failed: {exc}") from exc
@@ -80,12 +94,20 @@ async def categories_discover(request: DiscoverCategoriesRequest):
 
 @app.post("/api/plan")
 async def plan(request: PlanRequest):
-    return create_plan(request)
+    try:
+        return create_plan(request)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/apply")
 async def apply(request: ApplyRequest):
-    return {"run": apply_plan(request.plan)}
+    try:
+        return {"run": apply_plan(request)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/history")
@@ -99,6 +121,8 @@ async def history_detail(run_id: str):
         return load_run(run_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/undo/preview")
@@ -107,6 +131,8 @@ async def undo_preview(request: UndoPreviewRequest):
         return preview_undo(request.run_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/undo/apply")
@@ -115,12 +141,3 @@ async def undo_apply(request: UndoApplyRequest):
         return apply_undo(request.run_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@app.post("/api/open-folder")
-async def open_folder(request: OpenFolderRequest):
-    path = Path(request.folder_path).expanduser()
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Folder does not exist.")
-    subprocess.Popen(["open", str(path)])
-    return {"ok": True}
