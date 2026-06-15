@@ -61,5 +61,5 @@ jobs:
         run: |
           uv sync --locked --extra release
           ALLOW_UNSIGNED_RELEASE=1 ./script/package_release.sh 0.0.0-ci
-          shasum -a 256 -c dist/release/SHA256SUMS.txt
+          (cd dist/release && shasum -a 256 -c SHA256SUMS.txt)
           codesign --verify --deep --strict build/release/TidyDrop.app
